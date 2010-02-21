@@ -17,18 +17,14 @@ require 'html'
 local parsed_html = html.parsestr(htmlf)
 local xml = to_html(parsed_html[1])
 
-print(xml)
-
 local lom = require 'lxp.lom'
 local parsed = lom.parse(xml)
 
 local xpath = require 'xpath'
-print(parsed)
--- local found = xpath.selectNodes(parsed, "//form[@name='snd']//input[@name='login']")
-local found = xpath.selectNodes(parsed, "//input")
+local found = xpath.selectNodes(parsed, "//form//input[@name='login']")
 
-pt(found)
--- 
+print(to_string(found))
+
 -- print('xxx')
 -- print(#found)
 -- print(found[1].tag)
