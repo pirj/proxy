@@ -38,8 +38,8 @@ end
 
 function encode(str)
 	if "string" ~= type(str) then str = tostring(str) end
-	local repl = {["<"] = "&lt;", [">"] = "&gt;", ["\""] = "&quot;", ["&"] = "&amp;"}
-	return (string.gsub(str, "[<>\"&]", repl))
+	local repl = {["<"] = "&lt;", [">"] = "&gt;", ["\""] = "&quot;", ["&"] = "&amp;", ["'"] = "&apos;"}
+	return (string.gsub(str, "[<>\"&']", repl))
 end
 
 
@@ -63,16 +63,18 @@ function table_print (tt, indent, done)
   if type(tt) == "table" then
     local sb = {}
     for key, value in pairs (tt) do
-      table.insert(sb, string.rep (" ", indent)) -- indent it
       if type (value) == "table" and not done [value] then
+        table.insert(sb, string.rep (" ", indent)) -- indent it
         done [value] = true
         table.insert(sb, "{\n");
         table.insert(sb, table_print (value, indent + 2, done))
         table.insert(sb, string.rep (" ", indent)) -- indent it
         table.insert(sb, "}\n");
       elseif "number" == type(key) then
-        table.insert(sb, string.format("\"%s\"\n", tostring(value)))
+        -- table.insert(sb, string.rep (" ", indent)) -- indent it
+        -- table.insert(sb, string.format("\"%s\"\n", tostring(value)))
       else
+        table.insert(sb, string.rep (" ", indent)) -- indent it
         table.insert(sb, string.format(
             "%s = \"%s\"\n", tostring (key), tostring(value)))
        end
