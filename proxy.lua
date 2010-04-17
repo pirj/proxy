@@ -16,33 +16,31 @@ local function server(host, port, handler)
   )
 end
 
-function filter(chunk)
-  print('data chunk out')
+function filter2(chunk)
   -- first two cases are to maintain chaining logic that
   -- support expanding filters (see below)
   if chunk == nil then
+    print('<< nil')
     return nil
   elseif chunk == "" then
+    print('<< empty')
     return ""
   else
-    print('data chunk out:'..chunk)
+    print('<<'..chunk)
     -- process chunk and return filtered data
     return chunk
   end
 end
 
-function filter2(chunk)
-  print('data chunk in')
-  -- first two cases are to maintain chaining logic that
-  -- support expanding filters (see below)
+function filter1(chunk)
   if chunk == nil then
-    print('data chunk in nil')
+    print('>> nil')
     return nil
   elseif chunk == "" then
-    print('data chunk in empty')
+    print('>> empty')
     return ""
   else
-    print('data chunk in:'..chunk)
+    print('>>'..chunk)
     -- process chunk and return filtered data
     return chunk
   end
@@ -50,7 +48,7 @@ end
 
 function socket_source(sock)
   return function()
-    return sock:receive('*a')
+    return sock:receive('*l')
   end
 end
 
@@ -65,22 +63,34 @@ local function handler(sock_in, host, port)
 
     else
       print('non-travian, pulling transparently')
---socket_source(sock_in)) --
-      -- local source1 = ltn12.source.cat(ltn12.source.string(line), socket.source('until-closed', sock_in))
-      -- local source = ltn12.source.chain(source1, normalize())
+
+      -- local source = socket.source('until-closed', sock_in)
+      -- local source_compound = ltn12.source.cat(
+      --   ltn12.source.string(line..'\r\n'),
+      --   ltn12.source.string('Connection: close\r\n'),
+      --   socket_source(sock_in),
+      --   ltn12.source.string('\r\n'),
+      --   ltn12.source.string('\r\n')
+      -- ) -- ltn12.source.simplify(
       -- 
-      -- local url = string.match(line, 'http://([%a\.\/]+)')
-      -- -- local method = string.match(line, '%w+')
-      -- local sock_out = socket.try(socket.connect(url, 80))
+      -- source_compound = ltn12.source.chain(
+      --   source_compound,
+      --   filter2
+      -- )
+
+      -- local sink = ltn12.sink.chain(filter1,
+      --   socket.sink('close-when-done', sock_out)
+      -- )
       -- 
-      -- -- local sink = ltn12.sink.chain(normalize(), 
-      -- local sink = socket.sink('close-when-done', sock_out) --)
-      -- 
-      -- ltn12.pump.all(source, sink)
-      
-      local url = string.match(line, 'http://([%a\.\]+)/')
-      print(url)
-      local sock_out = socket.connect(url, 80) --socket.try()
+      -- ltn12.pump.all(source_compound, sink)
+
+      local url = string.match(line, 'http://([%a\.\]+):*%d*/')
+      local port = string.match(line, 'http://[%a\.\]+:(%d+)/')
+      if not url then print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!: "..line) end
+      print('url'..url)
+      print(port)
+      local sock_out = socket.connect(url, port or 80)
+
       repeat
         if line then print('['..line..']') end
         if line then sock_out:send(line..'\r\n') end
@@ -90,10 +100,13 @@ local function handler(sock_in, host, port)
       sock_out:send('Connection: close\r\n')
       sock_out:send('\r\n')
 
-      print('wait response')
-      local response = sock_out:receive('*a')
-      print('!'..response..'!')
-      if line then sock_in:send(response) end
+      source = socket.source('until-closed', sock_out)
+      source = ltn12.source.chain(
+        source,
+        filter2
+      )
+      sink = socket.sink('close-when-done', sock_in)
+      ltn12.pump.all(source, sink)
     end
   end
 end
