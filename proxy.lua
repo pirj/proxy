@@ -84,8 +84,8 @@ local function handler(sock_in, host, port)
       -- 
       -- ltn12.pump.all(source_compound, sink)
 
-      local url = string.match(line, 'http://([%a\.\]+):*%d*/')
-      local port = string.match(line, 'http://[%a\.\]+:(%d+)/')
+      local url = string.match(line, 'http://([%a%d\.-]+):*%d*/')
+      local port = string.match(line, 'http://[%a%d\.-]+:(%d+)/')
       if not url then print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!: "..line) end
       print('url'..url)
       print(port)
