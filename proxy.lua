@@ -16,36 +16,6 @@ local function server(host, port, handler)
   )
 end
 
-function filter2(chunk)
-  -- first two cases are to maintain chaining logic that
-  -- support expanding filters (see below)
-  if chunk == nil then
-    print('<< nil')
-    return nil
-  elseif chunk == "" then
-    print('<< empty')
-    return ""
-  else
-    print('<<'..chunk)
-    -- process chunk and return filtered data
-    return chunk
-  end
-end
-
-function filter1(chunk)
-  if chunk == nil then
-    print('>> nil')
-    return nil
-  elseif chunk == "" then
-    print('>> empty')
-    return ""
-  else
-    print('>>'..chunk)
-    -- process chunk and return filtered data
-    return chunk
-  end
-end
-
 function socket_source(sock)
   return function()
     return sock:receive('*l')
@@ -73,14 +43,8 @@ local function handler(sock_in, host, port)
       --   ltn12.source.string('\r\n')
       -- ) -- ltn12.source.simplify(
       -- 
-      -- source_compound = ltn12.source.chain(
-      --   source_compound,
-      --   filter2
-      -- )
 
-      -- local sink = ltn12.sink.chain(filter1,
-      --   socket.sink('close-when-done', sock_out)
-      -- )
+      -- local sink = socket.sink('close-when-done', sock_out)
       -- 
       -- ltn12.pump.all(source_compound, sink)
 
@@ -101,10 +65,6 @@ local function handler(sock_in, host, port)
       sock_out:send('\r\n')
 
       source = socket.source('until-closed', sock_out)
-      source = ltn12.source.chain(
-        source,
-        filter2
-      )
       sink = socket.sink('close-when-done', sock_in)
       ltn12.pump.all(source, sink)
     end
