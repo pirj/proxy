@@ -23,11 +23,9 @@ function socket_source(sock)
 end
 
 local function handler(sock_in, host, port)
-  print('incoming2: ', host, port)
-
   local line = sock_in:receive('*l')
   if line then
-    print('received: '..line)
+    print(line)
     if string.find(line, 'travian') then
       print('travian')
 
@@ -51,14 +49,10 @@ local function handler(sock_in, host, port)
       local url = string.match(line, 'http://([%a%d\.-]+):*%d*/')
       local port = string.match(line, 'http://[%a%d\.-]+:(%d+)/')
       if not url then print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!: "..line) end
-      print('url'..url)
-      print(port)
       local sock_out = socket.connect(url, port or 80)
 
       repeat
-        if line then print('['..line..']') end
         if line then sock_out:send(line..'\r\n') end
-        -- if line then sock_out:send(line) end
         line = sock_in:receive('*l')
       until not line or line == '\r\n' or line == '\n' or line == '\r' or line == ''
       sock_out:send('Connection: close\r\n')
