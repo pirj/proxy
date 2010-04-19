@@ -1,11 +1,12 @@
 require 'luarocks.require' -- http://www.luarocks.org/
 
-local copas = require 'copas' -- http://keplerproject.github.com/copas/
-local socket = require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
+require 'vendor/copas' -- http://keplerproject.github.com/copas/
+require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
 
 local function handler(sock_in)
   sock_in = copas.wrap(sock_in)
   local line = sock_in:receive('*l')
+  print(line)
 
   if not line or line == '' then
     print('error: empty input')
@@ -21,22 +22,24 @@ local function handler(sock_in)
   end
   local sock_out = socket.connect(url, port or 80)
 
+  repeat
+    sock_out:send(line..'\r\n')
+    line = sock_in:receive('*l')
+  until line == ''
+  sock_out:send('Connection: close\r\n')
+  sock_out:send('\r\n')
+
+  local response = sock_out:receive('*a')
   if string.find(line, 'travian') then
     print('travian')
-
-  else
-    repeat
-      sock_out:send(line..'\r\n')
-      line = sock_in:receive('*l')
-    until line == ''
-    sock_out:send('Connection: close\r\n')
-    sock_out:send('\r\n')
-
-    local response = sock_out:receive('*a')
-    if line then sock_in:send(response) end
+    response = check_captcha(response)
   end
+  sock_in:send(response)
+end
+
+local function check_captcha(data)
+  return data
 end
 
 copas.addserver(socket.bind('localhost', 3128), handler)
-
 copas.loop()
