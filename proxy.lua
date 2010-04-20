@@ -6,24 +6,23 @@ require 'socket.http' -- http://www.tecgraf.puc-rio.br/~diego/professional/luaso
 
 require 'util'
 
--- local html = require 'lib/html' -- http://luaforge.net/projects/html/
--- local lom = require 'lxp.lom' -- http://www.keplerproject.org/luaexpat/
--- local xpath = require 'lib/xpath' -- http://luaxpath.luaforge.net/
+local html = require 'lib/html' -- http://luaforge.net/projects/html/
+local lom = require 'lxp.lom' -- http://www.keplerproject.org/luaexpat/
+local xpath = require 'lib/xpath' -- http://luaxpath.luaforge.net/
 
 local function check_captcha(data)
-  return data
-  -- print('data')
+  print('data')
   -- print(to_string(data))
-  -- local parsed_html = html.parsestr(data)
-  -- print('parsed')
+  local parsed_html = html.parsestr(data)
+  print('parsed')
   -- print(to_string(parsed_html))
-  -- local xml = to_html(parsed_html[1])
-  -- print('xml')
-  -- print(to_string(xml))
-  -- local parsed = lom.parse(xml)
-  -- local found = xpath.selectNodes(parsed, "//div//center//span")
-  -- 
-  -- return to_string(found)
+  local xml = to_html(parsed_html[1])
+  print('xml')
+  print(to_string(xml))
+  local parsed = lom.parse(xml)
+  print('xpath')
+  local found = xpath.selectNodes(parsed, "//div//center//span")
+  return to_string(found)
 end
 
 local function handler(sock_in)
@@ -50,7 +49,7 @@ local function handler(sock_in)
     local line = sock_in:receive('*l')
     sock_out:send(line..'\r\n')
   until line == ''
-  sock_out:send('Connection: close\r\n')
+  sock_out:send('Connection: keep-alive\r\n')
   sock_out:send('\r\n')
 
   local response = sock_out:receive('*a')
