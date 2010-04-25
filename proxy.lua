@@ -2,13 +2,10 @@ require 'luarocks.require' -- http://www.luarocks.org/
 
 require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
 require 'async'
-require 'server'
 require 'travian'
 
 local function handler(sock_in)
-  print('receiving')
   local url, err = async.receive('', sock_in, '*l')
-  print('received', url)
 
   if not url or url == '' then
     print('error: empty input', err)
@@ -25,14 +22,16 @@ local function handler(sock_in)
   end
   local sock_out = socket.connect(host, port or 80)
 
-  async.send(url, sock_out, url..'\r\n')
+  local request = url..'\r\n'
   repeat
     local line = async.receive(url, sock_in, '*l')
     if not string.find(line, 'Proxy--Connection') then
-      async.send(url, sock_out, line..'\r\n')
+      request = request..line..'\r\n'
     end
   until line == ''
-  async.send(url, sock_out, 'Connection: keep-alive\r\n\r\n')
+  request = request..'Connection: keep-alive\r\n'
+  request = request..'\r\n'
+  async.send(url, sock_out, request)
   print('requested: ', url)
 
   local response, err = async.receive(url, sock_out, '*a')
@@ -44,9 +43,8 @@ local function handler(sock_in)
 
   response = travian.filter(url, 'mimetype', response)
 
-  print('sending to client')
   async.send(url, sock_in, response)
   print('done: ', url)
 end
 
-server.start(3128, handler)
+async.server(3128, handler)
