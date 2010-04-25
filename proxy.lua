@@ -1,6 +1,5 @@
 require 'luarocks.require' -- http://www.luarocks.org/
 
-require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
 require 'async'
 require 'travian'
 
@@ -14,8 +13,8 @@ local function handler(sock_in)
     print('working: ', url)
   end
 
-  local host = string.match(url, 'http://([%a%d\.-]+):*%d*/')
-  local port = string.match(url, 'http://[%a%d\.-]+:(%d+)/')
+  local host = string.match(url, 'http://([%a%d\.-]+):*%d*/') or string.match(url, '[%a]+ ([%a%d\.-]+):*%d*')
+  local port = string.match(url, 'http://[%a%d\.-]+:(%d+)/') or string.match(url, '[%a]+ [%a%d\.-]+:(%d+)')
   if not host then
     print('error:unparsable url'..url)
     return nil

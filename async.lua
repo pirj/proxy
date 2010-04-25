@@ -1,5 +1,7 @@
 module(..., package.seeall)
 
+require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
+
 function connect(host, port)
   -- local sock = socket.tcp()
   -- sock:settimeout(0)
@@ -11,11 +13,11 @@ function connect(host, port)
   -- return res
 
   local sock, err = socket.connect(host, port)
+  sock:settimeout(0)
   if not sock then
     print('CONN ERR:', err)
     return nil, err
   end
-  sock:settimeout(0)
   return sock, err
 end
 
@@ -32,7 +34,7 @@ function receive(url, sock, ...)
     end
   end
 
-  return data, err
+  return data
 end
 
 function send(url, sock, ...)
@@ -51,36 +53,48 @@ function send(url, sock, ...)
   return data, err
 end
 
+local connections_coroutines = {} -- socket: coroutine
+local connections = {} -- sockets
+
 function server(port, handler)
   server = socket.bind('localhost', port)
   server:settimeout(0)
   print('proxy started at port '..port)
-
-  local cos = {}
+  table.insert(connections, server)
 
   while true do
-    local client, err = server:accept()
-
-    if client then
-      print('accepted')
-      client:settimeout(0)
-      local co = coroutine.create(function()
-        handler(client)
-      end)
-  
-      table.insert(cos, co)
-    -- else
-    --   print('accept failed:', err)
+    print('connections', #connections)
+    local ins, outs, err = socket.select(connections, connections, 1)
+    
+    local cos_to_wake_up = {}
+    for i, connection in ipairs(ins) do
+      if not connections_coroutines[connection] then
+        local client, err = connection:accept()
+        connections_coroutines[client] = coroutine.create(function()
+          handler(client)
+        end)
+        table.insert(connections, client)
+        connection = client
+      end
+      cos_to_wake_up[connections_coroutines[connection]] = true
     end
 
-    for i, co in ipairs(cos) do
-      print('resuming', i)
+    for i, connection in ipairs(outs) do
+      cos_to_wake_up[connections_coroutines[connection]] = true
+    end
+    
+    for co in pairs(cos_to_wake_up) do
       coroutine.resume(co)
       if coroutine.status(co) == 'dead' then
-        print('removing', i)
-        table.remove(cos, i)
-        break
+        for i, connection in ipairs(connections) do
+          if connections_coroutines[connection] == co then
+            connections_coroutines[connection] = nil
+            table.remove(connections, i)
+            break
+          end
+        end
       end
     end
+    
   end
 end
