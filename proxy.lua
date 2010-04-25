@@ -1,8 +1,9 @@
 require 'luarocks.require' -- http://www.luarocks.org/
 
-require 'lib/copas' -- http://keplerproject.github.com/copas/
 require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
 require 'socket.http' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
+require 'async'
+require 'server'
 
 require 'util'
 
@@ -22,17 +23,29 @@ local function check_captcha(data)
   local parsed = lom.parse(xml)
   print('xpath')
   local found = xpath.selectNodes(parsed, "//div//center//span")
+  -- asok.sleep(5000)
   return to_string(found)
 end
 
+local function travian_filter(url, mimetype, data)
+  if string.find(url, 'travian') then
+    print('travian')
+    return check_captcha(data)
+  else
+    return data
+  end
+end
+
 local function handler(sock_in)
-  sock_in = copas.wrap(sock_in)
-  local url = sock_in:receive('*l')
-  print(url)
+  print('receiving')
+  local url, err = async.receive('', sock_in, '*l')
+  print('received', url)
 
   if not url or url == '' then
-    print('error: empty input')
+    print('error: empty input', err)
     return nil
+  else
+    print('working: ', url)
   end
 
   -- where to?
@@ -44,21 +57,28 @@ local function handler(sock_in)
   end
   local sock_out = socket.connect(host, port or 80)
 
-  sock_out:send(url..'\r\n')
+  async.send(url, sock_out, url..'\r\n')
   repeat
-    local line = sock_in:receive('*l')
-    sock_out:send(line..'\r\n')
+    local line = async.receive(url, sock_in, '*l')
+    if not string.find(line, 'Proxy--Connection') then
+      async.send(url, sock_out, line..'\r\n')
+    end
   until line == ''
-  sock_out:send('Connection: keep-alive\r\n')
-  sock_out:send('\r\n')
+  async.send(url, sock_out, 'Connection: keep-alive\r\n\r\n')
+  print('requested: ', url)
 
-  local response = sock_out:receive('*a')
-  if string.find(host, 'travian') then
-    print('travian')
-    response = check_captcha(response)
+  local response, err = async.receive(url, sock_out, '*a')
+  if response then
+    print('response received: ', url, #response)
+  else
+    print('response err for', url, err)
   end
-  sock_in:send(response)
+
+  response = travian_filter(url, 'mimetype', response)
+
+  print('sending to client')
+  async.send(url, sock_in, response)
+  print('done: ', url)
 end
 
-copas.addserver(socket.bind('localhost', 3128), handler)
-copas.loop()
+server.start(3128, handler)
