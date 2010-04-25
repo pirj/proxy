@@ -2,23 +2,22 @@ module(..., package.seeall)
 
 require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
 
-function connect(host, port)
-  -- local sock = socket.tcp()
-  -- sock:settimeout(0)
-  -- local res, err = sock:connect(host, port)
-  -- if not res then
-  --   print('CONN ERR:', err)
-  --   return nil, err
-  -- end
-  -- return res
+local connections_coroutines = {} -- socket: coroutine
+local connections = {} -- sockets
 
-  local sock, err = socket.connect(host, port)
-  sock:settimeout(0)
-  if not sock then
+function connect(host, port, co)
+  local sock = socket.tcp()
+  -- sock:settimeout(0)
+  local res, err = sock:connect(host, port)
+  table.insert(connections, sock)
+  connections_coroutines[sock] = co
+  print('setting', sock, 'to', co)
+  if not res then
     print('CONN ERR:', err)
     return nil, err
   end
-  return sock, err
+  print('CONN out', sock, res)
+  return sock
 end
 
 function receive(url, sock, ...)
@@ -53,9 +52,6 @@ function send(url, sock, ...)
   return data, err
 end
 
-local connections_coroutines = {} -- socket: coroutine
-local connections = {} -- sockets
-
 function server(port, handler)
   server = socket.bind('localhost', port)
   server:settimeout(0)
@@ -65,13 +61,14 @@ function server(port, handler)
   while true do
     print('connections', #connections)
     local ins, outs, err = socket.select(connections, connections, 1)
+    print('select', #ins, #outs, err)
     
     local cos_to_wake_up = {}
     for i, connection in ipairs(ins) do
       if not connections_coroutines[connection] then
         local client, err = connection:accept()
-        connections_coroutines[client] = coroutine.create(function()
-          handler(client)
+        connections_coroutines[client] = coroutine.create(function(co)
+          handler(client, co)
         end)
         table.insert(connections, client)
         connection = client
@@ -80,11 +77,14 @@ function server(port, handler)
     end
 
     for i, connection in ipairs(outs) do
-      cos_to_wake_up[connections_coroutines[connection]] = true
+      print('outs', connection, connections_coroutines[connection])
+      if connections_coroutines[connection] then
+        cos_to_wake_up[connections_coroutines[connection]] = true
+      end
     end
     
     for co in pairs(cos_to_wake_up) do
-      coroutine.resume(co)
+      coroutine.resume(co, co)
       if coroutine.status(co) == 'dead' then
         for i, connection in ipairs(connections) do
           if connections_coroutines[connection] == co then

@@ -3,7 +3,7 @@ require 'luarocks.require' -- http://www.luarocks.org/
 require 'async'
 require 'travian'
 
-local function handler(sock_in)
+local function handler(sock_in, co)
   local url, err = async.receive('', sock_in, '*l')
 
   if not url or url == '' then
@@ -19,7 +19,9 @@ local function handler(sock_in)
     print('error:unparsable url'..url)
     return nil
   end
-  local sock_out = socket.connect(host, port or 80)
+  print('conn: ', url)
+  local sock_out = async.connect(host, port or 80, co)
+  print('conn1: ', url)
 
   local request = url..'\r\n'
   repeat
@@ -38,6 +40,8 @@ local function handler(sock_in)
     print('response received: ', url, #response)
   else
     print('response err for', url, err)
+    sock_in.close()
+    return
   end
 
   response = travian.filter(url, 'mimetype', response)
