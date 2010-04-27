@@ -1,10 +1,9 @@
 require 'luarocks.require' -- http://www.luarocks.org/
-
 require 'async'
 require 'travian'
 
-local function handler(client, co)
-  local url, err = client:receive('*l')
+local function handler(browser)
+  local url, err = browser:receive('*l')
 
   if not url or url == '' then
     print('error: empty input', err)
@@ -20,37 +19,51 @@ local function handler(client, co)
     return nil
   end
   print('conn: ', url, host, port)
-  local server = async.connect(host, port or 80, co)
+  local srv = async.connect(host, port or 80)
+  -- local srv = socket.connect(host, port or 80)
+  print('connd: ', url, host, port)
 
   local request = url
   repeat
-    local line = client:receive('*l')
+    local line = browser:receive('*l')
     if not string.find(line, 'Proxy--Connection') then
       request = request..'\r\n'..line
     end
   until line == ''
   request = request..'Connection: keep-alive\r\n'
   request = request..'\r\n'
-  print('['..request..']')
-  -- async.send(url, server, request)
-  server:send(request)
-  print('requested: ', url)
+  async.send(url, srv, request)
 
-  -- local response, err = async.receive(url, server, '*a')
-  local response, err = server:receive('*a')
-  if response then
-    print('response received: ', url, #response)
-  else
-    print('response err for', url, err)
-    client.close()
-    return
-  end
+  print('a: ', url)
+  local data, err, left = async.receive(url, srv, '*a')
 
+  print('aa: ', url, #data, err, #left)
+  local response = data or left
+  -- repeat
+  --   -- local chunk, err = async.receive(url, srv, 512)
+  --   local chunk, err, incomp = srv:receive(100)
+  --   if chunk then
+  --     -- print('response received: ', url, #chunk, '[', chunk, ']')
+  --     s = s + #chunk
+  --     print('response received: ', url, #chunk, s, incomp)
+  --     table.insert(response, chunk)
+  --     coroutine.yield()
+  --   else
+  --     print('response err for', url, err, incomp)
+  --     srv:close()
+  --     browser:close()
+  --     return
+  --   end
+  -- until chunk == ''
+  -- print('response received ALL ', url)
+
+  print('b: ', url)
   response = travian.filter(url, 'mimetype', response)
 
+  print('c: ', url)
   client:send(response)
   -- client:close()
-  -- server:close()
+  -- srv:close()
   print('done: ', url)
 end
 
