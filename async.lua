@@ -6,12 +6,28 @@ local connections_coroutines = {} -- socket: coroutine
 local read = {} -- sockets
 local write = {} -- sockets
 
+local function subscribe(read_or_write, sock, co)
+  print('subscribing:', sock, co)
+  connections_coroutines[sock] = co
+  table.insert(read_or_write, sock)
+end
+
+local function unsubscribe(read_or_write, sock)
+  connections_coroutines[sock] = nil
+  for i, connection in ipairs(read_or_write) do
+    print('seek rmv', sock, connection)
+    if sock == connection then
+      print('removing', sock, connection)
+      table.remove(read_or_write, i)
+      return
+    end
+  end
+end
+
 function connect(host, port)
   local sock = socket.tcp()
-  sock:settimeout(0)
-
-  table.insert(read, sock)
-  connections_coroutines[sock] = coroutine.running()
+  sock:settimeout(0.1)
+  subscribe(read, sock, coroutine.running())
 
   local res, err = sock:connect(host, port)
   if err == 'timeout' then
@@ -24,52 +40,38 @@ function connect(host, port)
     return nil, err
   end
   print('CONN out', sock)
-  
-  for i, connection in ipairs(read) do
-    if sock == connection then
-      table.remove(read, i)
-    end
-  end
-  connections_coroutines[sock] = nil
 
+  unsubscribe(read, sock)
   return sock
 end
 
 function receive(url, sock, pattern)
-  table.insert(read, sock)
-  connections_coroutines[sock] = coroutine.running()
+  subscribe(read, sock, coroutine.running())
 
-  local data, err
+  local data, err, lo
   while not data do
-    print('receiving via sock', sock, url)
-    data, err = sock:receive(pattern)
+    print('receiving', sock, url)
+    data, err, lo = sock:receive(pattern)
     if err == 'timeout' then
       print('receive timeout', url)
       coroutine.yield()
       print('receive resumed')
     elseif err then
       print('async receive err:', err)
-      return nil, err
+      return nil, err, lo
     end
   end
 
-  for i, connection in ipairs(read) do
-    if sock == connection then
-      table.remove(read, i)
-    end
-  end
-  connections_coroutines[sock] = nil
-
+  unsubscribe(read, sock)
   return data
 end
 
 function send(url, sock, data_to_send)
-  table.insert(write, sock)
-  connections_coroutines[sock] = coroutine.running()
+  subscribe(write, sock, coroutine.running())
 
   local data, err
   while not data do
-    print('sending via sock', sock, url)
+    print('sending', sock, url)
     data, err = sock:send(data_to_send)
     if err == 'timeout' then
       print('send timeout', url)
@@ -82,14 +84,20 @@ function send(url, sock, data_to_send)
   end
   print('sent', data)
 
-  for i, connection in ipairs(write) do
-    if sock == connection then
-      table.remove(write, i)
+  unsubscribe(write, sock)
+  return data
+end
+
+local function cleanup(co)
+  for sock, coroutine in pairs(connections_coroutines) do
+    if co == coroutine then
+      print('cleaning up ', sock, coroutine)
+      connections_coroutines[sock] = nil
+      unsubscribe(read, sock)
+      unsubscribe(write, sock)
+      break
     end
   end
-  connections_coroutines[sock] = nil
-
-  return data
 end
 
 function server(port, handler)
@@ -100,34 +108,45 @@ function server(port, handler)
 
   while true do
     print('connections', #read, #write)
-    local ins, outs, err = socket.select(read, write, 1)
-    print('select', #ins, #outs, err)
+    local read_ready, write_ready, err = socket.select(read, write, 1)
+    print('select', #read_ready, #write_ready, err)
     
     local cos_to_wake_up = {}
-    for i, connection in ipairs(ins) do
+    for i, connection in ipairs(read_ready) do
       if not connections_coroutines[connection] then
         local client, err = connection:accept()
         print('incoming')
-        connections_coroutines[client] = coroutine.create(function()
+        local co = coroutine.create(function()
           handler(client)
         end)
-        table.insert(read, client)
+        -- subscribe(read, client, co)
         connection = client
+        connections_coroutines[connection] = co
       end
       cos_to_wake_up[connections_coroutines[connection]] = true
     end
 
-    for i, connection in ipairs(outs) do
-      -- print('outs', connection, connections_coroutines[connection])
+    for i, connection in ipairs(write_ready) do
       if connections_coroutines[connection] then
         cos_to_wake_up[connections_coroutines[connection]] = true
       end
     end
 
     for co in pairs(cos_to_wake_up) do
+      print('')
       print('resuming', co)
-      local a, b = coroutine.resume(co)
-      print('returned ', co, a, b)
+      local result, err = coroutine.resume(co)
+      print('returned ', co, result, err, coroutine.status(co))
+      if coroutine.status(co) == 'dead' then
+        print('dead cleanup')
+        cleanup(co)
+        break
+      elseif not result then
+        print('ERR:', err)
+        cleanup(co)
+        break
+      end
+      print('')
     end
     
   end

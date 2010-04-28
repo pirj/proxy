@@ -1,7 +1,6 @@
 require 'luarocks.require' -- http://www.luarocks.org/
 require 'async'
 require 'travian'
-require "profiler"
 
 local function handler(browser)
   local url, err = browser:receive('*l')
@@ -19,9 +18,7 @@ local function handler(browser)
     print('error:unparsable url'..url)
     return nil
   end
-  print('conn: ', url, host)
   local srv = async.connect(host, port or 80)
-  print('connd: ', url, host)
 
   local request = url
   repeat
@@ -40,20 +37,18 @@ local function handler(browser)
   if data then
     print('RECEIVE SUCCESS', url, #data)
   else
-    print('RECEIVE ERR', url, err)
+    print('RECEIVE ERR', url, err, '[', lo, ']')
   end
 
   local response = data or left
 
-  print('b: ', url)
-  response = travian.filter(url, 'mimetype', response)
+  -- response = travian.filter(url, 'mimetype', response)
 
-  print('c: ', url)
+  print('sending response to client: ', url)
   browser:send(response)
   -- browser:close()
   -- srv:close()
   print('done: ', url)
 end
 
--- profiler.start()
 async.server(3128, handler)
