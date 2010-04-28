@@ -27,7 +27,7 @@ local function handler(browser)
       request = request..'\r\n'..line
     end
   until line == ''
-  request = request..'Connection: keep-alive\r\n'
+  request = request..'Connection: close\r\n'
   request = request..'\r\n'
   async.send(url, srv, request)
 
@@ -37,7 +37,7 @@ local function handler(browser)
   if data then
     print('RECEIVE SUCCESS', url, #data)
   else
-    print('RECEIVE ERR', url, err, '[', lo, ']')
+    print('RECEIVE ERR', url, err, '[', left, ']')
   end
 
   local response = data or left
@@ -52,3 +52,4 @@ local function handler(browser)
 end
 
 async.server(3128, handler)
+

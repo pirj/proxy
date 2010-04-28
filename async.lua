@@ -29,14 +29,14 @@ function connect(host, port)
   local res, err = sock:connect(host, port)
   if err == 'timeout' then
     while not sock:getpeername() do
-      print('conn timeout, yield', host, port, sock:getpeername())
+      -- print('conn timeout, yield', host, port, sock:getpeername())
       coroutine.yield()
     end
   elseif err then
     print('async conn err:', err)
     return nil, err
   end
-  print('CONN out', sock)
+  -- print('CONN out', sock, host)
 
   unsubscribe(read, sock)
   return sock
@@ -47,14 +47,15 @@ function receive(url, sock, pattern)
 
   local data, err, lo
   while not data do
-    print('receiving', sock, url)
+    -- print('receiving', sock, url)
     data, err, lo = sock:receive(pattern)
     if err == 'timeout' then
-      print('receive timeout', url)
+      print('receive timeout', url, data, err, lo)
+      if lo then print('lo', #lo) end
       coroutine.yield()
-      print('receive resumed')
+      -- print('receive resumed')
     elseif err then
-      print('async receive err:', err)
+      print('async receive err:', err, lo)
       return nil, err, lo
     end
   end
@@ -68,18 +69,18 @@ function send(url, sock, data_to_send)
 
   local data, err
   while not data do
-    print('sending', sock, url)
+    -- print('sending', sock, url)
     data, err = sock:send(data_to_send)
     if err == 'timeout' then
-      print('send timeout', url)
+      -- print('send timeout', url)
       coroutine.yield()
-      print('send resumed')
+      -- print('send resumed')
     elseif err then
       print('async send err:', err)
       return nil, err
     end
   end
-  print('sent', data)
+  -- print('sent', data)
 
   unsubscribe(write, sock)
   return data
@@ -96,21 +97,20 @@ local function cleanup(co)
 end
 
 function server(port, handler)
-  server = socket.bind('localhost', port)
-  server:settimeout(0)
+  local server = socket.bind('localhost', port)
+  server:settimeout(0.5)
   print('proxy started at port '..port)
   table.insert(read, server)
 
   while true do
-    print('connections', #read, #write)
     local read_ready, write_ready, err = socket.select(read, write, 1)
-    print('select', #read_ready, #write_ready, err)
+    -- print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
     
     local cos_to_wake_up = {}
     for i, connection in ipairs(read_ready) do
       if not connections_coroutines[connection] then
         local client, err = connection:accept()
-        print('incoming')
+        -- print('incoming')
         local co = coroutine.create(function()
           handler(client)
         end)
@@ -128,20 +128,19 @@ function server(port, handler)
     end
 
     for co in pairs(cos_to_wake_up) do
-      print('')
-      print('resuming', co)
+      -- print('')
+      -- print('resuming', co)
       local result, err = coroutine.resume(co)
-      print('returned ', co, result, err, coroutine.status(co))
+      -- print('returned ', co, result, err, coroutine.status(co))
       if coroutine.status(co) == 'dead' then
         cleanup(co)
         break
       elseif not result then
-        print('ERR:', err)
+        print('co ERR:', err)
         cleanup(co)
         break
       end
-      print('')
-    end
-    
+      -- print('')
+    end    
   end
 end
