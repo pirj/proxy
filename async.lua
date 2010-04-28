@@ -47,23 +47,26 @@ function receive(sock, pattern)
   subscribe(read, sock, coroutine.running())
 
   local data, err, lo
+  local parts = {}
   while not data do
     -- print('receiving', sock)
     data, err, lo = sock:receive(pattern)
+    table.insert(parts, lo)
     if err == 'timeout' then
-      print('receive timeout', data, err, lo and #lo)
+      -- print('receive timeout', data, err, lo and #lo)
       coroutine.yield()
       -- print('receive resumed')
     elseif err then
       print('async receive err:', err, lo and #lo)
 
       unsubscribe(read, sock)
-      return nil, err, lo
+      return nil, err, table.concat(parts)
     end
   end
 
   unsubscribe(read, sock)
-  return data
+  table.insert(parts, data)
+  return table.concat(parts)
 end
 
 function send(sock, data_to_send)
