@@ -7,7 +7,6 @@ local read = {} -- sockets
 local write = {} -- sockets
 
 local function subscribe(read_or_write, sock, co)
-  print('subscribing:', sock, co)
   connections_coroutines[sock] = co
   table.insert(read_or_write, sock)
 end
@@ -15,9 +14,7 @@ end
 local function unsubscribe(read_or_write, sock)
   connections_coroutines[sock] = nil
   for i, connection in ipairs(read_or_write) do
-    print('seek rmv', sock, connection)
     if sock == connection then
-      print('removing', sock, connection)
       table.remove(read_or_write, i)
       return
     end
@@ -91,11 +88,9 @@ end
 local function cleanup(co)
   for sock, coroutine in pairs(connections_coroutines) do
     if co == coroutine then
-      print('cleaning up ', sock, coroutine)
       connections_coroutines[sock] = nil
       unsubscribe(read, sock)
       unsubscribe(write, sock)
-      break
     end
   end
 end
@@ -138,7 +133,6 @@ function server(port, handler)
       local result, err = coroutine.resume(co)
       print('returned ', co, result, err, coroutine.status(co))
       if coroutine.status(co) == 'dead' then
-        print('dead cleanup')
         cleanup(co)
         break
       elseif not result then
