@@ -3,8 +3,9 @@ module(..., package.seeall)
 require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
 
 local connections_coroutines = {} -- socket: coroutine
-local read = {} -- sockets
-local write = {} -- sockets
+local read = {} -- read sockets
+local write = {} -- write sockets
+local server_handlers = {}
 
 local function subscribe(read_or_write, sock, co)
   connections_coroutines[sock] = co
@@ -23,7 +24,7 @@ end
 
 function connect(host, port)
   local sock = socket.tcp()
-  sock:settimeout(0.1)
+  sock:settimeout(0)
   subscribe(read, sock, coroutine.running())
 
   local res, err = sock:connect(host, port)
@@ -42,20 +43,21 @@ function connect(host, port)
   return sock
 end
 
-function receive(url, sock, pattern)
+function receive(sock, pattern)
   subscribe(read, sock, coroutine.running())
 
   local data, err, lo
   while not data do
-    -- print('receiving', sock, url)
+    -- print('receiving', sock)
     data, err, lo = sock:receive(pattern)
     if err == 'timeout' then
-      print('receive timeout', url, data, err, lo)
-      if lo then print('lo', #lo) end
+      print('receive timeout', data, err, lo and #lo)
       coroutine.yield()
       -- print('receive resumed')
     elseif err then
-      print('async receive err:', err, lo)
+      print('async receive err:', err, lo and #lo)
+
+      unsubscribe(read, sock)
       return nil, err, lo
     end
   end
@@ -64,19 +66,21 @@ function receive(url, sock, pattern)
   return data
 end
 
-function send(url, sock, data_to_send)
+function send(sock, data_to_send)
   subscribe(write, sock, coroutine.running())
 
   local data, err
   while not data do
-    -- print('sending', sock, url)
+    -- print('sending', sock)
     data, err = sock:send(data_to_send)
     if err == 'timeout' then
-      -- print('send timeout', url)
+      -- print('send timeout')
       coroutine.yield()
       -- print('send resumed')
     elseif err then
       print('async send err:', err)
+
+      unsubscribe(write, sock)
       return nil, err
     end
   end
@@ -96,51 +100,59 @@ local function cleanup(co)
   end
 end
 
-function server(port, handler)
-  local server = socket.bind('localhost', port)
-  server:settimeout(0.5)
-  print('proxy started at port '..port)
+function add_server(server, handler)
+  server:settimeout(0)
+  server_handlers[server] = handler
   table.insert(read, server)
+end
 
-  while true do
-    local read_ready, write_ready, err = socket.select(read, write, 1)
-    -- print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
-    
-    local cos_to_wake_up = {}
-    for i, connection in ipairs(read_ready) do
-      if not connections_coroutines[connection] then
-        local client, err = connection:accept()
-        -- print('incoming')
-        local co = coroutine.create(function()
-          handler(client)
-        end)
-        -- subscribe(read, client, co)
-        connection = client
-        connections_coroutines[connection] = co
-      end
+function step()
+  local read_ready, write_ready, err = socket.select(read, write, 1)
+  -- print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
+  
+  local cos_to_wake_up = {}
+  for i, connection in ipairs(read_ready) do
+    if not connections_coroutines[connection] then
+      local handler = server_handlers[connection]
+      local client, err = connection:accept()
+      local co = coroutine.create(function() handler(client) end)
+      connection = client
+      connections_coroutines[connection] = co
+    end
+    cos_to_wake_up[connections_coroutines[connection]] = true
+  end
+
+  for i, connection in ipairs(write_ready) do
+    if connections_coroutines[connection] then
       cos_to_wake_up[connections_coroutines[connection]] = true
     end
-
-    for i, connection in ipairs(write_ready) do
-      if connections_coroutines[connection] then
-        cos_to_wake_up[connections_coroutines[connection]] = true
-      end
-    end
-
-    for co in pairs(cos_to_wake_up) do
-      -- print('')
-      -- print('resuming', co)
-      local result, err = coroutine.resume(co)
-      -- print('returned ', co, result, err, coroutine.status(co))
-      if coroutine.status(co) == 'dead' then
-        cleanup(co)
-        break
-      elseif not result then
-        print('co ERR:', err)
-        cleanup(co)
-        break
-      end
-      -- print('')
-    end    
   end
+
+  for co in pairs(cos_to_wake_up) do
+    -- print('')
+    -- print('resuming', co)
+    local result, err = coroutine.resume(co)
+    -- print('returned ', co, result, err, coroutine.status(co))
+    if coroutine.status(co) == 'dead' then
+      cleanup(co)
+      break
+    elseif not result then
+      print('co ERR:', err)
+      cleanup(co)
+      break
+    end
+    -- print('')
+  end    
+end
+
+local shutdown
+
+function loop()
+  while not shutdown do
+    step()
+  end
+end
+
+function shut_down()
+  shutdown = true
 end

@@ -3,7 +3,7 @@ require 'async'
 require 'travian'
 
 local function handler(browser)
-  local url, err = browser:receive('*l')
+  local url, err = async.receive(browser, '*l')
 
   if not url or url == '' then
     print('error: empty input', err)
@@ -22,34 +22,36 @@ local function handler(browser)
 
   local request = url
   repeat
-    local line = browser:receive('*l')
+    local line = async.receive(browser, '*l')
     if not string.find(line, 'Proxy--Connection') then
       request = request..'\r\n'..line
     end
   until line == ''
   request = request..'Connection: close\r\n'
   request = request..'\r\n'
-  async.send(url, srv, request)
+  async.send(srv, request)
 
-  print('a: ', url)
-  local data, err, left = async.receive(url, srv, '*a')
+  local data, err, left = async.receive(srv, '*a')
 
   if data then
     print('RECEIVE SUCCESS', url, #data)
   else
-    print('RECEIVE ERR', url, err, '[', left, ']')
+    print('RECEIVE ERR', url, err, left and #left)
   end
 
   local response = data or left
 
-  -- response = travian.filter(url, 'mimetype', response)
+  response = travian.filter(url, 'mimetype', response)
 
-  print('sending response to client: ', url)
-  browser:send(response)
+  print('sending response to client: ', url, response and #response)
+  async.send(browser, response)
   -- browser:close()
   -- srv:close()
   print('done: ', url)
 end
 
-async.server(3128, handler)
-
+local PORT = 3128
+local server = assert(socket.bind('localhost', PORT))
+print('proxy started at port '..PORT)
+async.add_server(server, handler)
+async.loop()
