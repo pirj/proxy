@@ -1,6 +1,7 @@
 require 'luarocks.require' -- http://www.luarocks.org/
 require 'async'
 require 'travian'
+require "profiler"
 
 local function handler(browser)
   local url, err = browser:receive('*l')
@@ -18,10 +19,9 @@ local function handler(browser)
     print('error:unparsable url'..url)
     return nil
   end
-  print('conn: ', url, host, port)
+  print('conn: ', url, host)
   local srv = async.connect(host, port or 80)
-  -- local srv = socket.connect(host, port or 80)
-  print('connd: ', url, host, port)
+  print('connd: ', url, host)
 
   local request = url
   repeat
@@ -37,34 +37,23 @@ local function handler(browser)
   print('a: ', url)
   local data, err, left = async.receive(url, srv, '*a')
 
-  print('aa: ', url, #data, err, #left)
+  if data then
+    print('RECEIVE SUCCESS', url, #data)
+  else
+    print('RECEIVE ERR', url, err)
+  end
+
   local response = data or left
-  -- repeat
-  --   -- local chunk, err = async.receive(url, srv, 512)
-  --   local chunk, err, incomp = srv:receive(100)
-  --   if chunk then
-  --     -- print('response received: ', url, #chunk, '[', chunk, ']')
-  --     s = s + #chunk
-  --     print('response received: ', url, #chunk, s, incomp)
-  --     table.insert(response, chunk)
-  --     coroutine.yield()
-  --   else
-  --     print('response err for', url, err, incomp)
-  --     srv:close()
-  --     browser:close()
-  --     return
-  --   end
-  -- until chunk == ''
-  -- print('response received ALL ', url)
 
   print('b: ', url)
   response = travian.filter(url, 'mimetype', response)
 
   print('c: ', url)
-  client:send(response)
-  -- client:close()
+  browser:send(response)
+  -- browser:close()
   -- srv:close()
   print('done: ', url)
 end
 
+-- profiler.start()
 async.server(3128, handler)

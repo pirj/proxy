@@ -41,10 +41,12 @@ function receive(url, sock, pattern)
 
   local data, err
   while not data do
+    print('receiving via sock', sock, url)
     data, err = sock:receive(pattern)
     if err == 'timeout' then
       print('receive timeout', url)
       coroutine.yield()
+      print('receive resumed')
     elseif err then
       print('async receive err:', err)
       return nil, err
@@ -67,11 +69,12 @@ function send(url, sock, data_to_send)
 
   local data, err
   while not data do
-    print('sending via sock', sock)
+    print('sending via sock', sock, url)
     data, err = sock:send(data_to_send)
     if err == 'timeout' then
       print('send timeout', url)
       coroutine.yield()
+      print('send resumed')
     elseif err then
       print('async send err:', err)
       return nil, err
@@ -123,7 +126,8 @@ function server(port, handler)
 
     for co in pairs(cos_to_wake_up) do
       print('resuming', co)
-      coroutine.resume(co)
+      local a, b = coroutine.resume(co)
+      print('returned ', co, a, b)
     end
     
   end
