@@ -31,7 +31,7 @@ function connect(host, port)
   if err == 'timeout' then
     while not sock:getpeername() do
       -- print('conn timeout, yield', host, port, sock:getpeername())
-      coroutine.yield()
+      if coroutine.running() then coroutine.yield() end
     end
   elseif err then
     print('async conn err:', err)
@@ -54,7 +54,7 @@ function receive(sock, pattern)
     table.insert(parts, lo)
     if err == 'timeout' then
       -- print('receive timeout', data, err, lo and #lo)
-      coroutine.yield()
+      if coroutine.running() then coroutine.yield() end
       -- print('receive resumed')
     elseif err then
       print('async receive err:', err, lo and #lo)
@@ -78,7 +78,7 @@ function send(sock, data_to_send)
     data, err = sock:send(data_to_send)
     if err == 'timeout' then
       -- print('send timeout')
-      coroutine.yield()
+      if coroutine.running() then coroutine.yield() end
       -- print('send resumed')
     elseif err then
       print('async send err:', err)
