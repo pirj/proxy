@@ -25,21 +25,23 @@ end
 function connect(host, port)
   local sock = socket.tcp()
   sock:settimeout(0)
-  subscribe(read, sock, coroutine.running())
+  subscribe(read, sock, coroutine.running()) -- one should be enough!!!
+  subscribe(write, sock, coroutine.running())
 
   local res, err = sock:connect(host, port)
   if err == 'timeout' then
     while not sock:getpeername() do
-      -- print('conn timeout, yield', host, port, sock:getpeername())
+      print('conn timeout, yield', host, port, sock:getpeername())
       if coroutine.running() then coroutine.yield() end
     end
   elseif err then
     print('async conn err:', err)
     return nil, err
   end
-  -- print('CONN out', sock, host)
+  print('CONN out', sock, host)
 
-  unsubscribe(read, sock)
+  unsubscribe(read, sock) -- one should be enough!!!
+  unsubscribe(write, sock)
   return sock
 end
 
@@ -109,9 +111,14 @@ function add_server(server, handler)
   table.insert(read, server)
 end
 
+local timeout = 1
+function set_timeout(user_timeout)
+  timeout = user_timeout
+end
+
 function step()
-  local read_ready, write_ready, err = socket.select(read, write, 1)
-  -- print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
+  local read_ready, write_ready, err = socket.select(read, write, timeout)
+  print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
   
   local cos_to_wake_up = {}
   for i, connection in ipairs(read_ready) do
