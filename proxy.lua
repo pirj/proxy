@@ -20,21 +20,48 @@ local function handler(browser)
   end
   local srv = async.connect(host, port or 80)
 
-  local request = url
+  local body_length
+  local request = {url, 'Connection: close'}
   repeat
     local line = async.receive(browser, '*l')
     if not string.find(line, 'Proxy--Connection') then
-      request = request..'\r\n'..line
+      table.insert(request, line)
+      if string.find(line, 'Content--Length') then
+        -- print('>>!!!!!!!!['..line..']')
+        body_length = string.match(line, 'Content--Length: (%d+)')
+      end
     end
   until line == ''
-  request = request..'Connection: close\r\n'
-  request = request..'\r\n'
-  async.send(srv, request)
+  
+  -- local line = async.receive(browser, '*l')
+  -- print('>>!!!!!!!!['..line..']')  
 
-  local data, err, left = async.receive(srv, '*a')
+  print('body? ', body_length)
+  if body_length then
+    print('receiving body ', body_length)
+    local body = async.receive(browser, body_length)
+    print('receiving body ', body and #body, '['..body..']')
+    table.insert(request, body)
+  else
+    table.insert(request, '')
+  end
+
+  print('r', table.concat(request, '\r\n'))
+  async.send(srv, table.concat(request, '\r\n'))
+
+  local data, err, left = async.receive(srv, '*a')  
+
+  -- local head = ''
+  -- repeat
+  --   local line = async.receive(srv, '*l')
+  --     head = head..'\r\n'..line
+  --     print('<<['..line..']')
+  --   end
+  -- until line == ''
 
   if data then
     print('RECEIVE SUCCESS', url, #data)
+    print('RECEIVE SUCCESS', url, data)
   else
     print('RECEIVE ERR', url, err, left and #left)
   end
