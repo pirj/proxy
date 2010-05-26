@@ -1,28 +1,25 @@
 module(..., package.seeall)
 
-require 'util'
-
-local html = require 'lib/html' -- http://luaforge.net/projects/html/
-local lom = require 'lxp.lom' -- http://www.keplerproject.org/luaexpat/
-local xpath = require 'lib/xpath' -- http://luaxpath.luaforge.net/
-
 local function check_captcha(data)
   print('data')
-  -- print(to_string(data))
-  local parsed_html = html.parsestr(data)
-  print('parsed')
-  -- print(to_string(parsed_html))
-  local xml = to_html(parsed_html[1])
-  print('xml')
-  print(to_string(xml))
-  local parsed = lom.parse(xml)
-  print('xpath')
-  local found = xpath.selectNodes(parsed, "//div//center//span")
-  -- asok.sleep(5000)
-  return to_string(found)
+  
+  -- search captcha
+  if string.find(data, 'captcha') then
+    -- download image
+    -- send to server
+    -- yield in loop for 5 sec
+    -- yield in loop asking server for resolved, wait 1 sec
+    
+    -- post to travian
+    -- get result, pass back
+    return result
+  else
+    return data
+  end
 end
 
 function filter(url, mimetype, data)
+  -- !! html only ??
   if string.find(url, 'travian') then
     print('travian')
     return check_captcha(data)
