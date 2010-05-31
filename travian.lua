@@ -1,7 +1,11 @@
 module(..., package.seeall)
 
 local http = require('socket.http')
-local ltn12 = require('ltn12')
+local mime = require("mime")
+
+local server = 'http://dewpel.com'
+local rosa_user = 'pirj@mail.ru'
+local rosa_password = 'Q2w3E4'
 
 local function check_captcha(data)
   print('data')
@@ -11,10 +15,6 @@ local function check_captcha(data)
   
   if captcha then
     print('got captcha: '..captcha)
-    -- optionally transforming url to google to avoid http redirect
-    -- http://api.recaptcha.net/noscript?k=6LfdmAsAAAAAAPb_3Zn53hlv5fR3oUS0FeXc7a9h&amp;lang=en
-    -- http://www.google.com/recaptcha/api/noscript?k=6LfdmAsAAAAAAPb_3Zn53hlv5fR3oUS0FeXc7a9h&amp;lang=en
-    -- local google = string.gsub(captcha, 'http://api.recaptcha.net/noscript', 'http://www.google.com/recaptcha/api/noscript')
     
     -- downloading google's nojavascript recaptcha page
     local captcha_page = http.request(captcha)
@@ -22,38 +22,16 @@ local function check_captcha(data)
     
     -- find image link
     -- src="image?c=03AHJ_VuvCYZT-aZL96WJa7bTVx6rlUcqAWPtNkM-zQ5NHKQYinkjcV5DT-u-qm5mfTgnqlqrKTwAzZWcMwo5cumK7bbSRddzQtevH1NuYwkfpj33cALtgJ3rygojWGaTJ_xhbGrOqly7G9fDZlEqb0qNVseZ517ui0w"
-    local image_link = 'http://api.recaptcha.net/'..string.match(captcha_page, 'src="image??c=[%d%a%-_]+)"')
+    local image_link = 'http://api.recaptcha.net/'..string.match(captcha_page, 'src="(image??c=[%d%a%-_]+)"')
     print('image link:'..image_link)
 
-    -- download image
-    local image = http.request(image_link)
-    print('got image, size='..#image)
-    
     -- post image to rosa server
-    http.request{
-      url = 'http://dewpel.com',
-      -- [sink = LTN12 sink,]
-      [method = string,]
-      headers = {['Content-Length'] = #image}
-      [source = LTN12 source],
-      [step = LTN12 pump step,]
-      -- [proxy = string,]
-      -- [redirect = boolean,]
-      -- [create = function]
-    }
+    -- local captcha_id = http.request('http://'..rosa_user..':'rosa_password..'@dewpel.com/captcha/upload', image)
 
-    local source = ltn12.source.file()
-    local sink = ltn12.sink.file()
-    
-    local transferring_image = true
-    while transferring_image do
-      transferring_image = ltn12.pump.all(source, sink)
-    end
-    
-    
-    
-    
-    
+    r, c, d, e = http.request{
+      url = server..'/captcha/upload/'..mime.b64(image_link),
+      headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
+    }
     -- yield in loop for 5 sec
     -- yield in loop asking server for resolved, wait 1 sec
     
