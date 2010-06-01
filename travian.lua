@@ -1,7 +1,8 @@
 module(..., package.seeall)
 
 local http = require('socket.http')
-local mime = require("mime")
+local mime = require('mime')
+local ltn12 = require('ltn12')
 
 local server = 'http://dewpel.com'
 local rosa_user = 'pirj@mail.ru'
@@ -25,15 +26,33 @@ local function check_captcha(data)
     local image_link = 'http://api.recaptcha.net/'..string.match(captcha_page, 'src="(image??c=[%d%a%-_]+)"')
     print('image link:'..image_link)
 
-    -- post image to rosa server
-    -- local captcha_id = http.request('http://'..rosa_user..':'rosa_password..'@dewpel.com/captcha/upload', image)
-
+    -- post image link to rosa server
+    local captcha_id = {}
     r, c, d, e = http.request{
       url = server..'/captcha/upload/'..mime.b64(image_link),
       headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
+      sink = ltn12.sink.table(captcha_id)
     }
+    
+    captcha_id = table.concat(captcha_id)
+    print('waiting id:'..captcha_id)
+    
     -- yield in loop for 5 sec
+    local expected = os.time() + 5
+    while os.time() < expected do
+      coroutine.yield()
+    end
+    
     -- yield in loop asking server for resolved, wait 1 sec
+    local resolved
+    local status
+    until status == 200 do
+      http.request{
+        url = server..'/captcha/upload/'..mime.b64(image_link),
+        headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
+        sink = ltn12.sink.table(captcha_id)
+      }
+    end
     
     -- post to travian
     -- get result, pass back
