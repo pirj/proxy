@@ -8,7 +8,7 @@ local server = 'http://dewpel.com'
 local rosa_user = 'pirj@mail.ru'
 local rosa_password = 'Q2w3E4'
 
-local function check_captcha(data)
+local function check_captcha(url, data)
   print('data')
   
   -- searching captcha on the page
@@ -38,36 +38,55 @@ local function check_captcha(data)
     print('waiting id:'..captcha_id)
     
     -- yield in loop for 5 sec
-    local expected = os.time() + 5
-    while os.time() < expected do
-      coroutine.yield()
-    end
+    yield_for(4)
     
     -- yield in loop asking server for resolved, wait 1 sec
     local resolved
     local status
     until status == 200 do
+      resolved = {}
+      yield_for(1)
       http.request{
-        url = server..'/captcha/upload/'..mime.b64(image_link),
+        url = server..'/captcha/'..captcha_id,
         headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
-        sink = ltn12.sink.table(captcha_id)
+        sink = ltn12.sink.table(resolved)
       }
     end
     
+    resolved = table.concat(resolved)
+    print('resolved:'..resolved)
+
     -- post to travian
+    local result = {}
+    http.request{
+      method = 'POST',
+      url = url,
+      headers = {
+        ['Content-Encoding'] = 'Basic',
+      },
+      sink = ltn12.sink.table(result)
+    }
+    
     -- get result, pass back
-    return result
+    return table.concat(result)
   else
     -- yahoo, no captcha! proceeding
     return data
   end
 end
 
+function yield_for(seconds)
+    local expected = os.time() + seconds
+    while os.time() < expected do
+      coroutine.yield()
+    end
+end
+
 function filter(url, mimetype, data)
   -- !! html only ??
   if string.find(url, 'travian') then
     print('travian')
-    return check_captcha(data)
+    return check_captcha(url, data)
   else
     return data
   end
