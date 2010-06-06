@@ -35,7 +35,7 @@ local function handler(browser)
   local data, err, left = async.receive(srv, '*a')  
   local response = data or left
 
-  response = travian.filter(url, 'mimetype', response)
+  response = travian.filter(url, 'mimetype', request, response)
 
   async.send(browser, response)
   -- browser:close()
