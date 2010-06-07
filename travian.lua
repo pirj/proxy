@@ -10,12 +10,13 @@ local rosa_user = 'pirj@mail.ru'
 local rosa_password = 'Q2w3E4'
 
 local function check_captcha(url, request_headers, data)
-  -- print('data')
+  print('checking url:', url, #data)
   
   -- searching captcha on the page
   local captcha = string.match(data, '<iframe src="(http://api.recaptcha.net/noscript??k=[%a%d_]+&amp;lang=en)')
   
   if not captcha then
+    print('not matched')
     -- yahoo, no captcha! proceeding
     return data
   end
@@ -106,14 +107,14 @@ local function check_captcha(url, request_headers, data)
   return table.concat(result)
 end
 
-function url_encode(str)
+local function url_encode(str)
   str = string.gsub (str, "([^%w ])",
       function (c) return string.format ("%%%02X", string.byte(c)) end)
   str = string.gsub (str, " ", "+")
   return str	
 end
 
-function yield_for(seconds)
+local function yield_for(seconds)
     local expected = os.time() + seconds
     while os.time() < expected do
       coroutine.yield()
@@ -121,11 +122,12 @@ function yield_for(seconds)
 end
 
 function filter(url, mimetype, request_headers, data)
-  -- !! html only ??
-  if string.find(url, 'travian') then
-    print('travian')
+  print('filtering:',url,' type:',mimetype)
+  if string.find(url, 'travian') and string.find(mimetype, 'text/html') then
+    print('captcha')
     return check_captcha(url, request_headers, data)
   else
+    print('passing')
     return data
   end
 end
