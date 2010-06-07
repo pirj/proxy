@@ -31,14 +31,14 @@ function connect(host, port)
   local res, err = sock:connect(host, port)
   if err == 'timeout' then
     while not sock:getpeername() do
-      print('conn timeout, yield', host, port, sock:getpeername())
+      -- print('conn timeout, yield', host, port, sock:getpeername())
       if coroutine.running() then coroutine.yield() end
     end
   elseif err then
-    print('async conn err:', err)
+    -- print('async conn err:', err)
     return nil, err
   end
-  print('CONN out', sock, host)
+  -- print('CONN out', sock, host)
 
   unsubscribe(read, sock) -- one should be enough!!!
   unsubscribe(write, sock)
@@ -59,7 +59,7 @@ function receive(sock, pattern)
       if coroutine.running() then coroutine.yield() end
       -- print('receive resumed')
     elseif err then
-      print('async receive err:', err, lo and #lo)
+      -- print('async receive err:', err, lo and #lo)
 
       unsubscribe(read, sock)
       return nil, err, table.concat(parts)
@@ -83,7 +83,7 @@ function send(sock, data_to_send)
       if coroutine.running() then coroutine.yield() end
       -- print('send resumed')
     elseif err then
-      print('async send err:', err)
+      -- print('async send err:', err)
 
       unsubscribe(write, sock)
       return nil, err
@@ -118,7 +118,7 @@ end
 
 function step()
   local read_ready, write_ready, err = socket.select(read, write, timeout)
-  print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
+  -- print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
   
   local cos_to_wake_up = {}
   for i, connection in ipairs(read_ready) do
@@ -147,7 +147,7 @@ function step()
       cleanup(co)
       break
     elseif not result then
-      print('co ERR:', err)
+      -- print('co ERR:', err)
       cleanup(co)
       break
     end
