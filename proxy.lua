@@ -2,6 +2,7 @@ require 'luarocks.require' -- http://www.luarocks.org/
 require 'async'
 require 'travian'
 require 'util'
+local gzip = require 'lib/deflatelua'
 
 local function handler(browser)
   local url, err = async.receive(browser, '*l')
@@ -34,28 +35,35 @@ local function handler(browser)
 
   async.send(srv, table.concat(request, '\r\n'))
 
-  local mimetype, encoding
+  local mimetype, encoding, encoding_header
   local response_headers = {}
   repeat
     local line = async.receive(srv, '*l')
     -- print('resp line', line)
 
-    table.insert(response_headers, line)
-    if string.find(line, 'Content--Type') then
-      mimetype = string.match(line, 'Content--Type: ([%a/; -=]+)')
-    end
     if string.find(line, 'Content--Encoding') then
-      encoding = string.match(line, 'Content--Encoding: ([%a/]+)')
+      encoding_header, encoding = string.match(line, '(Content--Encoding: ([%a/]+))')
+    else
+      table.insert(response_headers, line)
+      if string.find(line, 'Content--Type') then
+        mimetype = string.match(line, 'Content--Type: ([%a/; -=]+)')
+      end
     end
   until line == ''
   print('response mimetype', mimetype, 'encoding', encoding)
   
   local data, err, left = async.receive(srv, '*a')
   local response = data or left
-  
-  -- !! TODO : DECODE gzip; remove encoding header then
-  -- !! IMPLEMENT AS PROXY to skip unpacking of files from unrelated sites and mimetypes
 
+  -- !! IMPLEMENT AS PROXY to skip unpacking of files from unrelated sites and mimetypes
+  if encoding == 'gzip' then
+    local decoded = {}
+    gzip.gunzip {input=content, output=function(byte) table.insert(decoded, string.char(byte)) end}
+    response = table.concat(decoded)
+  else if encoding then
+    table.insert(response_headers, encoding_header)
+  end
+  
   response = travian.filter(url, mimetype, request, response)
 
   table.insert(response_headers, '')
