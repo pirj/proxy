@@ -60,7 +60,7 @@ local function handler(browser)
     local decoded = {}
     gzip.gunzip {input=content, output=function(byte) table.insert(decoded, string.char(byte)) end}
     response = table.concat(decoded)
-  else if encoding then
+  elseif encoding then
     table.insert(response_headers, encoding_header)
   end
   
