@@ -21,7 +21,7 @@ local require = require
 local setmetatable = setmetatable
 local _G = _G
 
-local bxor = require "bit.numberlua" . bxor
+local bxor = require "lib/numberlua" . bxor
 
 
 -- CRC-32-IEEE 802.3 (V.42)

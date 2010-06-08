@@ -35,7 +35,7 @@ local string_char = string.char
 local io_open = io.open
 local _G = _G
 
-local crc32 = require "digest.crc32lua" . crc32_byte
+local crc32 = require "lib/crc32lua" . crc32_byte
 
 local DEBUG = false
 
