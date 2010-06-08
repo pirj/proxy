@@ -73,14 +73,19 @@ local function handler(browser)
     local chunk_size = async.receive(srv, '*l')
     repeat
       local chunk, d, k, e = async.receive(srv, tonumber(chunk_size, 16))
+      print('chunk:', chunk, d, k, e)
       if chunk then
         table.insert(chunks, chunk)
         chunk_size = async.receive(srv, '*l')
+        print('chunk_size', chunk_size)
+        chunk_size = async.receive(srv, '*l')
+        print('chunk_size2', chunk_size)
       else
         chunk_size = nil
       end
-    until not chunk_size or chunk_size == ''
+    until not chunk_size or chunk_size == '0'
     response = table.concat(chunks)
+    print('total size:', response)
   else
     local data, err, left = async.receive(srv, '*a')
     response = data or left
