@@ -9,7 +9,7 @@ local server = 'http://dewpel.com'
 local rosa_user = 'pirj@mail.ru'
 local rosa_password = 'Q2w3E4'
 
-local function check_captcha(url, request_headers, data)
+function filter(url, mimetype, request_headers, data)
   print('checking url:', url, #data)
   
   -- searching captcha on the page
@@ -121,13 +121,7 @@ local function yield_for(seconds)
     end
 end
 
-function filter(url, mimetype, request_headers, data)
-  print('filtering:',url,' type:',mimetype)
-  if string.find(url, 'travian') and mimetype and string.find(mimetype, 'text/html') then
-    print('captcha')
-    return check_captcha(url, request_headers, data)
-  else
-    print('passing')
-    return data
-  end
+function pre(url, mimetype, request_headers)
+  print('prefiltering:',url,' type:',mimetype)
+  return string.find(url, 'travian') and mimetype and string.find(mimetype, 'text/html')
 end

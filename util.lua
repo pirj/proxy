@@ -81,3 +81,49 @@ function to_string( tbl )
         return tostring(tbl)
     end
 end
+
+function DEC_HEX(IN)
+  local B,K,OUT,I,D=16,"0123456789ABCDEF","",0
+  while IN>0 do
+    I=I+1
+    IN,D=math.floor(IN/B),math.mod(IN,B)+1
+    OUT=string.sub(K,D,D)..OUT
+  end
+  return OUT
+end
+
+-- !! TODO: fix
+function dechunk(chunkie)
+  local chunks = {}
+  local chunk_size = async.receive(srv, '*l')
+  
+--   b,e,s = string.find(a, '([^\n]+)\n') reads line
+-- 1       4       sdf
+-- a = string.sub(a, e + 1)
+
+  repeat
+    local chunk, d, k, e = async.receive(srv, tonumber(chunk_size, 16))
+    print('chunk:', chunk, d, k, e)
+    if chunk then
+      table.insert(chunks, chunk)
+      chunk_size = async.receive(srv, '*l')
+      print('chunk_size', chunk_size)
+      chunk_size = async.receive(srv, '*l')
+      print('chunk_size2', chunk_size)
+    else
+      chunk_size = nil
+    end
+  until not chunk_size or chunk_size == '0'
+  response = table.concat(chunks)
+  print('total size:', response)
+end
+
+table.collect = function(t, f)
+  r = {}
+  for k,v in pairs(t) do
+    if f(v) then
+      r[k] = v
+    end
+  end
+  return r
+end
