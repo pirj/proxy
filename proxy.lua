@@ -4,6 +4,16 @@ require 'travian'
 require 'util'
 local gzip = require 'lib/deflatelua'
 
+local function DEC_HEX(IN)
+  local B,K,OUT,I,D=16,"0123456789ABCDEF","",0
+  while IN>0 do
+    I=I+1
+    IN,D=math.floor(IN/B),math.mod(IN,B)+1
+    OUT=string.sub(K,D,D)..OUT
+  end
+  return OUT
+end
+
 local function handler(browser)
   local url, err = async.receive(browser, '*l')
   print('working: ', url)
@@ -18,6 +28,7 @@ local function handler(browser)
   repeat
     local line = async.receive(browser, '*l')
     -- print('req line', line)
+    -- todo : respect keep-alive
     if not string.find(line, 'Proxy--Connection') then
       table.insert(request, line)
       if string.find(line, 'Content--Length') then
@@ -35,7 +46,7 @@ local function handler(browser)
 
   async.send(srv, table.concat(request, '\r\n'))
 
-  local mimetype, encoding, encoding_header
+  local mimetype, encoding, encoding_header, transfer_encoding
   local response_headers = {}
   repeat
     local line = async.receive(srv, '*l')
@@ -43,22 +54,42 @@ local function handler(browser)
 
     if string.find(line, 'Content--Encoding') then
       encoding_header, encoding = string.match(line, '(Content--Encoding: ([%a/]+))')
-    else
+    elseif not (line == '') then
       table.insert(response_headers, line)
       if string.find(line, 'Content--Type') then
         mimetype = string.match(line, 'Content--Type: ([%a/; -=]+)')
+      elseif string.find(line, 'Transfer--Encoding') then
+        transfer_encoding = string.match(line, 'Transfer--Encoding: ([%a/]+)')
       end
     end
   until line == ''
-  print('response mimetype', mimetype, 'encoding', encoding)
   
-  local data, err, left = async.receive(srv, '*a')
-  local response = data or left
+  print('response mimetype', mimetype, 'encoding', encoding, 'transfer-encoding', transfer_encoding)
+  
+  -- !! IMPLEMENT AS PROXY to skip compounding of files from unrelated sites and mimetypes
+  local response
+  if transfer_encoding == 'chunked' then
+    local chunks = {}
+    local chunk_size = async.receive(srv, '*l')
+    repeat
+      local chunk, d, k, e = async.receive(srv, tonumber(chunk_size, 16))
+      if chunk then
+        table.insert(chunks, chunk)
+        chunk_size = async.receive(srv, '*l')
+      else
+        chunk_size = nil
+      end
+    until not chunk_size or chunk_size == ''
+    response = table.concat(chunks)
+  else
+    local data, err, left = async.receive(srv, '*a')
+    response = data or left
+  end
 
   -- !! IMPLEMENT AS PROXY to skip unpacking of files from unrelated sites and mimetypes
   if encoding == 'gzip' then
     local decoded = {}
-    gzip.gunzip {input=content, output=function(byte) table.insert(decoded, string.char(byte)) end}
+    gzip.gunzip {input=response, output=function(byte) table.insert(decoded, string.char(byte)) end}
     response = table.concat(decoded)
   elseif encoding then
     table.insert(response_headers, encoding_header)
@@ -67,11 +98,15 @@ local function handler(browser)
   response = travian.filter(url, mimetype, request, response)
 
   table.insert(response_headers, '')
-  async.send(browser, table.concat(response_headers, '\r\n'))
-  async.send(browser, response)
+  if transfer_encoding == 'chunked' then
+    print('#response', #response, DEC_HEX(#response))
+    async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..DEC_HEX(#response)..'\r\n'..response..'\r\n'..'0'..'\r\n')
+  else
+    async.send(browser, table.concat(response_headers, '\r\n')..response)
+  end
 
-  -- browser:close()
-  -- srv:close()
+  browser:close()
+  srv:close()
   print('done: ', url)
 end
 

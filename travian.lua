@@ -123,7 +123,7 @@ end
 
 function filter(url, mimetype, request_headers, data)
   print('filtering:',url,' type:',mimetype)
-  if string.find(url, 'travian') and string.find(mimetype, 'text/html') then
+  if string.find(url, 'travian') and mimetype and string.find(mimetype, 'text/html') then
     print('captcha')
     return check_captcha(url, request_headers, data)
   else

@@ -142,7 +142,7 @@ function step()
     -- print('')
     -- print('resuming', co)
     local result, err = coroutine.resume(co)
-    -- print('returned ', co, result, err, coroutine.status(co))
+    print('returned ', co, result, err, coroutine.status(co))
     if coroutine.status(co) == 'dead' then
       cleanup(co)
       break
