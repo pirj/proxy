@@ -18,7 +18,7 @@ function filter(url, mimetype, request_headers, data)
   if not captcha then
     print('not matched')
     -- yahoo, no captcha! proceeding
-    return data
+    return nil
   end
   
   print('got captcha: '..captcha)

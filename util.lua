@@ -92,30 +92,33 @@ function DEC_HEX(IN)
   return OUT
 end
 
--- !! TODO: fix
+local function readline(s)
+  local _, e, result = string.find(s, '([^\r\n]+\r\n)')
+  if e then return string.sub(s, e + 1), result end
+end
+
+local function readbytes(s, n)
+  return string.sub(s, n + 1), string.sub(s, 1, n)
+end
+
 function dechunk(chunkie)
+  local chunk_size
   local chunks = {}
-  local chunk_size = async.receive(srv, '*l')
-  
---   b,e,s = string.find(a, '([^\n]+)\n') reads line
--- 1       4       sdf
--- a = string.sub(a, e + 1)
+  chunkie, chunk_size = readline(chunkie)
 
   repeat
-    local chunk, d, k, e = async.receive(srv, tonumber(chunk_size, 16))
-    print('chunk:', chunk, d, k, e)
+    local chunk
+    chunkie, chunk = readbytes(chunkie, tonumber(chunk_size, 16))
     if chunk then
       table.insert(chunks, chunk)
-      chunk_size = async.receive(srv, '*l')
-      print('chunk_size', chunk_size)
-      chunk_size = async.receive(srv, '*l')
-      print('chunk_size2', chunk_size)
+      chunkie, _ = readline(chunkie)
+      chunkie, chunk_size = readline(chunkie)
     else
       chunk_size = nil
     end
   until not chunk_size or chunk_size == '0'
-  response = table.concat(chunks)
-  print('total size:', response)
+  print('total chinks:', #chunks)
+  return table.concat(chunks)
 end
 
 table.collect = function(t, f)

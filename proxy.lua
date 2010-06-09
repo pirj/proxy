@@ -66,30 +66,31 @@ local function handler(filters, browser)
   else
     print('#active_filters', #active_filters)
     if transfer_encoding == 'chunked' then
+      print('pre-chink', #response)
       response = dechunk(response)
+      print('post-chink', #response)
     end
 
     if encoding == 'gzip' then
       local decoded = {}
       gzip.gunzip {input=response, output=function(byte) table.insert(decoded, string.char(byte)) end}
       response = table.concat(decoded)
-      print('b', to_string(response_headers))
-      print('re gzip at', encoding_header_no)
-      -- todo !! check if removes gzip header
-      table.remove(response_headers, encoding_header_no)
-      print('a', to_string(response_headers))
+      -- table.remove(response_headers, encoding_header_no) -- removing content-encoding header
     elseif encoding then
       table.insert(response_headers, encoding_header)
     end
   
-    response = travian.filter(url, mimetype, request, response)
-
-    table.insert(response_headers, '')
-    if transfer_encoding == 'chunked' then
-      print('#response', #response, DEC_HEX(#response))
-      async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..DEC_HEX(#response)..'\r\n'..response..'\r\n'..'0'..'\r\n')
+    local filtered = travian.filter(url, mimetype, request, response)
+    if filtered then
+      if transfer_encoding == 'chunked' then
+        print('#response', #filtered, DEC_HEX(#filtered))
+        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..(DEC_HEX(#filtered) + 2)..'\r\n'..filtered..'\r\n'..'0'..'\r\n')
+      else
+        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..filtered)
+      end
     else
-      async.send(browser, table.concat(response_headers, '\r\n')..response)
+      print('passing thru, filter passed')
+      async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
     end
   end
 

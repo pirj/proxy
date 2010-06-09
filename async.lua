@@ -139,19 +139,12 @@ function step()
   end
 
   for co in pairs(cos_to_wake_up) do
-    -- print('')
-    -- print('resuming', co)
     local result, err = coroutine.resume(co)
     print('returned ', co, result, err, coroutine.status(co))
     if coroutine.status(co) == 'dead' then
       cleanup(co)
       break
-    elseif not result then
-      -- print('co ERR:', err)
-      cleanup(co)
-      break
     end
-    -- print('')
   end    
 end
 
