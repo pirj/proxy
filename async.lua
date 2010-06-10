@@ -35,10 +35,9 @@ function connect(host, port)
       if coroutine.running() then coroutine.yield() end
     end
   elseif err then
-    -- print('async conn err:', err)
+    print('async conn err:', err)
     return nil, err
   end
-  -- print('CONN out', sock, host)
 
   unsubscribe(read, sock) -- one should be enough!!!
   unsubscribe(write, sock)
@@ -140,7 +139,9 @@ function step()
 
   for co in pairs(cos_to_wake_up) do
     local result, err = coroutine.resume(co)
-    print('returned ', co, result, err, coroutine.status(co))
+    if err then
+      print('co err ', co, result, err, coroutine.status(co))
+    end
     if coroutine.status(co) == 'dead' then
       cleanup(co)
       break

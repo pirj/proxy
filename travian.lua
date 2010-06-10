@@ -3,22 +3,33 @@ module(..., package.seeall)
 local http = require('socket.http')
 local mime = require('mime')
 local ltn12 = require('ltn12')
-require('util') -- !! temp !!
 
 local server = 'http://dewpel.com'
 local rosa_user = 'pirj@mail.ru'
 local rosa_password = 'Q2w3E4'
 
+local function url_encode(str)
+  str = string.gsub (str, "([^%w ])",
+      function (c) return string.format ("%%%02X", string.byte(c)) end)
+  str = string.gsub (str, " ", "+")
+  return str	
+end
+
+local function yield_for(seconds)
+    local expected = os.time() + seconds
+    while os.time() < expected do
+      coroutine.yield()
+    end
+end
+
 function filter(url, mimetype, request_headers, data)
-  print('checking url:', url, #data)
-  
   -- searching captcha on the page
   local captcha = string.match(data, '<iframe src="(http://api.recaptcha.net/noscript??k=[%a%d_]+&amp;lang=en)')
   
   if not captcha then
-    print('not matched')
+    -- print('not matched')
     -- yahoo, no captcha! proceeding
-    return nil
+    return data
   end
   
   print('got captcha: '..captcha)
@@ -88,7 +99,7 @@ function filter(url, mimetype, request_headers, data)
 -- Content-Type application/x-www-form-urlencoded
 -- Content-Length 348
 
-  print('original headers:'..to_string(request_headers))
+  print('original headers:'..table.concat(request_headers, '\r\n'))
   
   request_headers['Content-Type'] = 'application/x-www-form-urlencoded'
   request_headers['Content-Length'] = #post_data
@@ -104,24 +115,9 @@ function filter(url, mimetype, request_headers, data)
   print(r, c, d, e)
   
   -- get result, pass back
-  return table.concat(result)
-end
-
-local function url_encode(str)
-  str = string.gsub (str, "([^%w ])",
-      function (c) return string.format ("%%%02X", string.byte(c)) end)
-  str = string.gsub (str, " ", "+")
-  return str	
-end
-
-local function yield_for(seconds)
-    local expected = os.time() + seconds
-    while os.time() < expected do
-      coroutine.yield()
-    end
+  return table.concat(result), true
 end
 
 function pre(url, mimetype, request_headers)
-  print('prefiltering:',url,' type:',mimetype)
   return string.find(url, 'travian') and mimetype and string.find(mimetype, 'text/html')
 end

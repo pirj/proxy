@@ -6,7 +6,8 @@ local gzip = require 'lib/deflatelua'
 
 local function handler(filters, browser)
   local url, err = async.receive(browser, '*l')
-  print('working: ', url)
+  local begin_time = os.time()
+  -- print('in: ', url)
 
   local host = string.match(url, 'http://([%a%d\.-]+):*%d*/') or string.match(url, '[%a]+ ([%a%d\.-]+):*%d*')
   local port = string.match(url, 'http://[%a%d\.-]+:(%d+)/') or string.match(url, '[%a]+ [%a%d\.-]+:(%d+)')
@@ -53,50 +54,51 @@ local function handler(filters, browser)
     end
   until line == ''
 
-  print('response mimetype', mimetype, 'encoding', encoding, 'transfer-encoding', transfer_encoding)
-
   local data, err, left = async.receive(srv, '*a')
   local response = data or left
 
   local active_filters = table.collect(filters, function(filter) return filter.pre(url, mimetype, request_headers) end)
   
   if #active_filters == 0 then
-    print('passing thru, filters pre-passed request')
+    -- print('passing thru, filters pre-passed request')
     async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
   else
-    print('#active_filters', #active_filters)
+    -- print('#active_filters', #active_filters)
+    local original_response = response
     if transfer_encoding == 'chunked' then
-      print('pre-chink', #response)
       response = dechunk(response)
-      print('post-chink', #response)
     end
 
     if encoding == 'gzip' then
       local decoded = {}
       gzip.gunzip {input=response, output=function(byte) table.insert(decoded, string.char(byte)) end}
       response = table.concat(decoded)
-      -- table.remove(response_headers, encoding_header_no) -- removing content-encoding header
-    elseif encoding then
-      table.insert(response_headers, encoding_header)
     end
   
-    local filtered = travian.filter(url, mimetype, request, response)
-    if filtered then
+    local any_change = false
+    for _, filter in pairs(active_filters) do
+      response, changed = filter.filter(url, mimetype, request, response)
+      any_change = any_change or changed
+    end
+    if any_change then
+      -- print('responding filtered data')
+      if encoding == 'gzip' then
+        table.remove(response_headers, encoding_header_no) -- removing content-encoding header
+      end
       if transfer_encoding == 'chunked' then
-        print('#response', #filtered, DEC_HEX(#filtered))
-        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..(DEC_HEX(#filtered) + 2)..'\r\n'..filtered..'\r\n'..'0'..'\r\n')
+        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..(DEC_HEX(#response) + 2)..'\r\n'..response..'\r\n'..'0'..'\r\n')
       else
-        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..filtered)
+        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
       end
     else
-      print('passing thru, filter passed')
-      async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
+      -- print('passing thru, filter passed')
+      async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..original_response)
     end
   end
 
   browser:close()
   srv:close()
-  print('done: ', url)
+  -- print('done: ', os.time() - begin_time, url)
 end
 
 local PORT = 3128
