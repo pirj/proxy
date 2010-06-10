@@ -86,7 +86,7 @@ local function handler(filters, browser)
         table.remove(response_headers, encoding_header_no) -- removing content-encoding header
       end
       if transfer_encoding == 'chunked' then
-        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..(DEC_HEX(#response) + 2)..'\r\n'..response..'\r\n'..'0'..'\r\n')
+        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..(DEC_HEX(#response))..'\r\n'..response..'\r\n'..'0'..'\r\n')
       else
         async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
       end
