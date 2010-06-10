@@ -6,6 +6,20 @@ local connections_coroutines = {} -- socket: coroutine
 local read = {} -- read sockets
 local write = {} -- write sockets
 local server_handlers = {}
+local regular = {}
+
+function add_regular(co)
+  table.insert(regular, co)
+end
+
+function remove_regular(co)
+  for i, c in ipairs(regular) do
+    if co == c then
+      table.remove(regular, i)
+      return
+    end
+  end
+end
 
 local function subscribe(read_or_write, sock, co)
   connections_coroutines[sock] = co
@@ -144,6 +158,17 @@ function step()
     end
     if coroutine.status(co) == 'dead' then
       cleanup(co)
+      break
+    end
+  end
+  
+  for _, co in pairs(regular) do
+    local result, err = coroutine.resume(co)
+    if err then
+      print('co err ', co, result, err, coroutine.status(co))
+    end
+    if coroutine.status(co) == 'dead' then
+      remove_regular(co)
       break
     end
   end    
