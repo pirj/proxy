@@ -3,6 +3,7 @@ module(..., package.seeall)
 local http = require('socket.http')
 local mime = require('mime')
 local ltn12 = require('ltn12')
+require 'async'
 
 local server = 'http://dewpel.com'
 local rosa_user = 'pirj@mail.ru'
@@ -17,9 +18,11 @@ end
 
 local function yield_for(seconds)
     local expected = os.time() + seconds
+    async.add_regular(coroutine.running())
     while os.time() < expected do
       coroutine.yield()
     end
+    async.remove_regular(coroutine.running())
 end
 
 function filter(url, mimetype, request_headers, data)
@@ -32,11 +35,11 @@ function filter(url, mimetype, request_headers, data)
     return data
   end
   
-  print('got captcha: '..captcha)
+  -- print('got captcha: '..captcha)
   
   -- downloading google's nojavascript recaptcha page
   local captcha_page = http.request(captcha)
-  print('got page: '..captcha_page)
+  -- print('got page: '..captcha_page)
   
   -- find image link
   -- src="image?c=03AHJ_VuvCYZT-aZL96WJa7bTVx6rlUcqAWPtNkM-zQ5NHKQYinkjcV5DT-u-qm5mfTgnqlqrKTwAzZWcMwo5cumK7bbSRddzQtevH1NuYwkfpj33cALtgJ3rygojWGaTJ_xhbGrOqly7G9fDZlEqb0qNVseZ517ui0w"
@@ -48,32 +51,41 @@ function filter(url, mimetype, request_headers, data)
   print('challenge:'..challenge)
 
   -- post image link to rosa server
-  local captcha_id = {}
-  r, c, d, e = http.request {
-    url = server..'/captcha/upload/'..mime.b64(image_link),
-    headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
-    sink = ltn12.sink.table(captcha_id)
-  }
-  print(r, c, d, e)
-  
+  local captcha_id
+
+  local status = 0
+  repeat
+    captcha_id = {}
+    print('sending AG request, yield 1 sec')
+    _, status = http.request {
+      url = server..'/captcha/upload/'..mime.b64(image_link),
+      headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
+      sink = ltn12.sink.table(captcha_id)
+    }
+    print('resp:', table.concat(captcha_id))
+    yield_for(1)
+  until status == 200
+
   captcha_id = table.concat(captcha_id)
-  print('waiting id:'..captcha_id)
+  print('waiting id, yield 4 sec:'..captcha_id)
   
-  -- yield in loop for 5 sec
+  -- yield in loop for 4 sec
   yield_for(4)
+
+  print('waiting id2:'..captcha_id)
   
   -- yield in loop asking server for resolved, wait 1 sec
   local resolved
   local status = 0
   repeat
     resolved = {}
+    print('waiting id, yield 1 sec:'..captcha_id)
     yield_for(1)
-    r, c, d, e = http.request {
+    _, status = http.request {
       url = server..'/captcha/'..captcha_id,
       headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
       sink = ltn12.sink.table(resolved)
     }
-    print(r, c, d, e)
   until status == 200
   
   resolved = table.concat(resolved)
@@ -105,14 +117,18 @@ function filter(url, mimetype, request_headers, data)
   request_headers['Content-Length'] = #post_data
   
   -- post to travian
+  print('posting['..post_data..']')
+  local host = string.match(url, '%a+ (http://[%a%d\./:-]+)')
   local result = {}
   r, c, d, e = http.request {
     method = 'POST',
-    url = url,
+    url = host,
     headers = request_headers,
     sink = ltn12.sink.table(result)
   }
+  print('response:')
   print(r, c, d, e)
+  print(table.concat(result))
   
   -- get result, pass back
   return table.concat(result), true
