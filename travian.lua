@@ -9,13 +9,6 @@ local server = 'http://dewpel.com'
 local rosa_user = 'pirj@mail.ru'
 local rosa_password = 'Q2w3E4'
 
-local function url_encode(str)
-  str = string.gsub (str, "([^%w ])",
-      function (c) return string.format ("%%%02X", string.byte(c)) end)
-  str = string.gsub (str, " ", "+")
-  return str	
-end
-
 local function yield_for(seconds)
     local expected = os.time() + seconds
     async.add_regular(coroutine.running())
@@ -27,7 +20,7 @@ end
 
 function filter(url, mimetype, request_headers, data)
   -- searching captcha on the page
-  local captcha = string.match(data, '<iframe src="(http://api.recaptcha.net/noscript??k=[%a%d_]+&amp;lang=en)')
+  local captcha, captcha_key = string.match(data, '<iframe src="(http://api.recaptcha.net/noscript??(k=[%a%d_]+&amp;lang=en))')
   
   if not captcha then
     -- print('not matched')
@@ -94,44 +87,57 @@ function filter(url, mimetype, request_headers, data)
   -- recaptcha_challenge_field  02JU_v-DFLIW47OAVaPx6-S87AAUZnbWyPvKzSFx3tM_EY_GKOZbCCOlQ_KEI7ohYapxkgTeG7YQbPzWqTfkyslA-qU52MwvHC7t3MoEk3xCwMq7jvdeHZq34hqraoKuSq2NrddkeTecKvBlV0L2sA8oUcj2Pv3jhxe-sHyWkNon4Qgbh_1CApy7hQyeZ1Tf1-lu_9fxH08s1d15Kz373h0ZgoAubu2GXPmB631cDNykMTcEJ-ipJUVsKLepes7qvzjxqeZ_FJeBjDtk1nfnmHWq16KusB
   -- recaptcha_response_field may ullman
   local post_data = 
-    'recaptcha_challenge_field='..url_encode(challenge)..'&'..
-    'recaptcha_response_field='..url_encode(resolved)
+    'recaptcha_challenge_field='..url_encode(challenge)..
+    '&recaptcha_response_field='..url_encode(resolved)..
+    '&submit='..url_encode("I'm a human")
   print('post_data:'..post_data)
-  
--- Host s4.travian.ru
--- User-Agent Mozilla/5.0 (Macintosh; U; PPC Mac OS X 10.4; en-US; rv:1.9.1.2) Gecko/20090729 Firefox/3.5.2
--- Accept text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
--- Accept-Language  en-us,en;q=0.5
--- Accept-Encoding  gzip,deflate
--- Accept-Charset ISO-8859-1,utf-8;q=0.7,*;q=0.7
--- Keep-Alive 300
--- Connection keep-alive
--- Referer  http://s4.travian.ru/dorf1.php
--- Cookie T3E=ldDOwEjZ0EGZ2ozM1ETM3QzNyo34zgTOzoTMzEjN1gTN3ITM6UjO2gjN3kDZxMmY5oTI6CNsQrL0g4L0yCtOzETM3ATM6AzI5YjN2kzIzETM3ATM
--- Content-Type application/x-www-form-urlencoded
--- Content-Length 348
 
   print('original headers:'..table.concat(request_headers, '\r\n'))
+
+  local google_request_headers = {
+    ['Host'] = 'www.google.com',
+    ['User-Agent'] = 'Mozilla/5.0 (Macintosh; U; PPC Mac OS X 10.4; en-US; rv:1.9.1.2) Gecko/20090729 Firefox/3.5.2', --request_headers['User-Agent'],
+    ['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', --request_headers['Accept'],
+    ['Accept-Language'] = 'en-us,en;q=0.5', --request_headers['Accept-Language'],
+    ['Referer'] = captcha,
+    ['Content-Type'] = 'application/x-www-form-urlencoded',
+    ['Content-Length'] = #post_data
+  }
+
+  -- post to google
+  print('headers:'..table.concat(google_request_headers, '\r\n'))
+  print('url', 'http://www.google.com/recaptcha/api/noscript?'..captcha_key)
+
+  local recaptcha_key = {}
+  _, status = http.request {
+    method = 'POST',
+    url = 'http://www.google.com/recaptcha/api/noscript?'..captcha_key,
+    headers = google_request_headers,
+    source = ltn12.source.string(post_data),
+    sink = ltn12.sink.table(recaptcha_key)
+  }
   
-  request_headers['Content-Type'] = 'application/x-www-form-urlencoded'
-  request_headers['Content-Length'] = #post_data
+  recaptcha_key = table.concat(recaptcha_key)
+  recaptcha_key = string.match(recaptcha_key, '<textarea[^>]+>([%a%d_\-]+)</textarea>')
+  
+  return data
   
   -- post to travian
-  print('posting['..post_data..']')
-  local host = string.match(url, '%a+ (http://[%a%d\./:-]+)')
-  local result = {}
-  r, c, d, e = http.request {
-    method = 'POST',
-    url = host,
-    headers = request_headers,
-    sink = ltn12.sink.table(result)
-  }
-  print('response:')
-  print(r, c, d, e)
-  print(table.concat(result))
-  
-  -- get result, pass back
-  return table.concat(result), true
+  -- print('posting['..post_data..']')
+  -- local host = string.match(url, '%a+ (http://[%a%d\./:-]+)')
+  -- local result = {}
+  -- r, c, d, e = http.request {
+  --   method = 'POST',
+  --   url = host,
+  --   headers = request_headers,
+  --   sink = ltn12.sink.table(result)
+  -- }
+  -- print('response:')
+  -- print(r, c, d, e)
+  -- print(table.concat(result))
+  -- 
+  -- -- get result, pass back
+  -- return table.concat(result), true
 end
 
 function pre(url, mimetype, request_headers)

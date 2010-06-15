@@ -45,3 +45,7 @@ table.collect = function(t, f)
   end
   return r
 end
+
+function url_encode(str)
+  return string.gsub(str, "([^a-zA-Z0-9_\*\'\(\)\.\+\!$\-])", function(c) return string.format("%%%02X", string.byte(c)) end)
+end
