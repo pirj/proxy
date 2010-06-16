@@ -19,20 +19,20 @@ end
 
 function dechunk(chunkie)
   local chunk_size
+  local chunk
   local chunks = {}
   chunkie, chunk_size = readline(chunkie)
 
-  repeat
-    local chunk
+  while tonumber(chunk_size, 16) > 0 do
     chunkie, chunk = readbytes(chunkie, tonumber(chunk_size, 16))
-    if chunk then
-      table.insert(chunks, chunk)
-      chunkie, _ = readline(chunkie)
+
+    table.insert(chunks, chunk)
+    chunkie, chunk_size = readline(chunkie)
+    if not chunk_size or chunk_size == '' then -- sometimes there's a crlf, sometimes not
       chunkie, chunk_size = readline(chunkie)
-    else
-      chunk_size = nil
     end
-  until not chunk_size or chunk_size == '0'
+  end
+
   return table.concat(chunks)
 end
 
