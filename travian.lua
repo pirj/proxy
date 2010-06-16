@@ -25,7 +25,7 @@ function filter(url, mimetype, request_headers, data)
   if not captcha then
     -- print('not matched')
     -- yahoo, no captcha! proceeding
-    return data
+    return nil
   end
   
   -- print('got captcha: '..captcha)
@@ -120,24 +120,28 @@ function filter(url, mimetype, request_headers, data)
   recaptcha_key = table.concat(recaptcha_key)
   recaptcha_key = string.match(recaptcha_key, '<textarea[^>]+>([%a%d_\-]+)</textarea>')
   
-  return data
-  
   -- post to travian
-  -- print('posting['..post_data..']')
   -- local host = string.match(url, '%a+ (http://[%a%d\./:-]+)')
-  -- local result = {}
-  -- r, c, d, e = http.request {
-  --   method = 'POST',
-  --   url = host,
-  --   headers = request_headers,
-  --   sink = ltn12.sink.table(result)
-  -- }
-  -- print('response:')
-  -- print(r, c, d, e)
-  -- print(table.concat(result))
-  -- 
-  -- -- get result, pass back
-  -- return table.concat(result), true
+  post_data = 
+    'recaptcha_challenge_field='..url_encode(recaptcha_key)..
+    '&recaptcha_response_field=manual_challenge'
+
+  request_headers['Content-Type'] = 'application/x-www-form-urlencoded'
+  request_headers['Content-Length'] = #post_data
+
+  print('posting to travian')
+  local result = {}
+  _, status = http.request {
+    method = 'POST',
+    url = url,
+    headers = request_headers,
+    source = ltn12.source.string(post_data),
+    sink = ltn12.sink.table(result)
+  }
+  print('response:', status, '\r\n', table.concat(result))
+  
+  -- get result, pass back
+  return status, table.concat(result)
 end
 
 function pre(url, mimetype, request_headers)

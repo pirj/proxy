@@ -4,9 +4,9 @@ require 'travian'
 require 'util'
 local gzip = require 'lib/deflatelua'
 
-local function handler(filters, browser)
+local function handler(filter, browser)
   local url, err = async.receive(browser, '*l')
-  local begin_time = os.time()
+  -- local begin_time = os.time()
   -- print('in: ', url)
 
   local host = string.match(url, 'http://([%a%d\.-]+):*%d*/') or string.match(url, '[%a]+ ([%a%d\.-]+):*%d*')
@@ -18,7 +18,6 @@ local function handler(filters, browser)
   local request = {url, 'Connection: close'}
   repeat
     local line = async.receive(browser, '*l')
-    -- print('req line', line)
     -- todo : respect keep-alive
     if not string.find(line, 'Proxy--Connection') then
       table.insert(request, line)
@@ -41,8 +40,6 @@ local function handler(filters, browser)
   local response_headers = {}
   repeat
     local line = async.receive(srv, '*l')
-    -- print('resp line', line)
-
     table.insert(response_headers, line)
     if string.find(line, 'Content--Type') then
       mimetype = string.match(line, 'Content--Type: ([%a/; -=]+)')
@@ -57,43 +54,31 @@ local function handler(filters, browser)
   local data, err, left = async.receive(srv, '*a')
   local response = data or left
 
-  local active_filters = table.collect(filters, function(filter) return filter.pre(url, mimetype, request_headers) end)
-  
-  if #active_filters == 0 then
-    -- print('passing thru, filters pre-passed request')
-    async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
-  else
-    -- print('#active_filters', #active_filters)
-    local original_response = response
-    if transfer_encoding == 'chunked' then
-      response = dechunk(response)
-    end
+  local original_response = response
+  -- dechunking
+  if transfer_encoding == 'chunked' then
+    response = dechunk(response)
+  end
 
-    if encoding == 'gzip' then
-      local decoded = {}
-      gzip.gunzip {input=response, output=function(byte) table.insert(decoded, string.char(byte)) end}
-      response = table.concat(decoded)
-    end
+  -- gunzipping
+  if encoding == 'gzip' then
+    local decoded = {}
+    gzip.gunzip {input=response, output=function(byte) table.insert(decoded, string.char(byte)) end}
+    response = table.concat(decoded)
+  end
   
-    local any_change = false
-    for _, filter in pairs(active_filters) do
-      response, changed = filter.filter(url, mimetype, request, response)
-      any_change = any_change or changed
-    end
-    if any_change then
-      -- print('responding filtered data')
-      if encoding == 'gzip' then
-        table.remove(response_headers, encoding_header_no) -- removing content-encoding header
-      end
-      if transfer_encoding == 'chunked' then
-        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..(DEC_HEX(#response))..'\r\n'..response..'\r\n'..'0'..'\r\n')
-      else
-        async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
-      end
+  if filter.pre(url, mimetype, request_headers) then
+    local changed, filter_response = filter.filter(url, mimetype, request, response)
+    if changed then
+      -- sending filtered
+      async.send(browser, filter_response)
     else
-      -- print('passing thru, filter passed')
+      -- passing through
       async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..original_response)
     end
+  else
+    -- passing through
+    async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..original_response)
   end
 
   browser:close()
@@ -104,6 +89,5 @@ end
 local PORT = 3128
 local server = assert(socket.bind('localhost', PORT))
 print('proxy started at port '..PORT)
-local filters = {travian}
-async.add_server(server, function(browser) handler(filters, browser) end)
+async.add_server(server, function(browser) handler(travian, browser) end)
 async.loop()
