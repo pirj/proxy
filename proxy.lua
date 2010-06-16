@@ -54,20 +54,20 @@ local function handler(filter, browser)
   local data, err, left = async.receive(srv, '*a')
   local response = data or left
 
-  local original_response = response
-  -- dechunking
-  if transfer_encoding == 'chunked' then
-    response = dechunk(response)
-  end
-
-  -- gunzipping
-  if encoding == 'gzip' then
-    local decoded = {}
-    gzip.gunzip {input=response, output=function(byte) table.insert(decoded, string.char(byte)) end}
-    response = table.concat(decoded)
-  end
-  
   if filter.pre(url, mimetype, request_headers) then
+    local original_response = response
+    -- dechunking
+    if transfer_encoding == 'chunked' then
+      response = dechunk(response)
+    end
+
+    -- gunzipping
+    if encoding == 'gzip' then
+      local decoded = {}
+      gzip.gunzip {input=response, output=function(byte) table.insert(decoded, string.char(byte)) end}
+      response = table.concat(decoded)
+    end
+
     local changed, filter_response = filter.filter(url, mimetype, request, response)
     if changed then
       -- sending filtered
@@ -78,7 +78,7 @@ local function handler(filter, browser)
     end
   else
     -- passing through
-    async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..original_response)
+    async.send(browser, table.concat(response_headers, '\r\n')..'\r\n'..response)
   end
 
   browser:close()
