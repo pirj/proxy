@@ -50,7 +50,7 @@ function filter(url, mimetype, request_headers, data)
     -- print('sending AG request, yield 1 sec')
     _, status = http.request {
       url = rosa_server..'/captcha/upload/'..mime.b64(image_link),
-      headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
+      headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password_sha1) },
       sink = ltn12.sink.table(captcha_id)
     }
     -- print('resp:', table.concat(captcha_id))
