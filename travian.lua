@@ -5,9 +5,7 @@ local mime = require('mime')
 local ltn12 = require('ltn12')
 require 'async'
 
-local server = 'http://dewpel.com'
-local rosa_user = 'pirj@mail.ru'
-local rosa_password = 'Q2w3E4'
+require 'credentials'
 
 local function yield_for(seconds)
     local expected = os.time() + seconds
@@ -51,7 +49,7 @@ function filter(url, mimetype, request_headers, data)
     captcha_id = {}
     -- print('sending AG request, yield 1 sec')
     _, status = http.request {
-      url = server..'/captcha/upload/'..mime.b64(image_link),
+      url = rosa_server..'/captcha/upload/'..mime.b64(image_link),
       headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
       sink = ltn12.sink.table(captcha_id)
     }
