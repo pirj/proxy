@@ -2,17 +2,19 @@ module(..., package.seeall)
 
 require 'socket' -- http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/
 
-local connections_coroutines = {} -- socket: coroutine
-local read = {} -- read sockets
-local write = {} -- write sockets
+local connections_coroutines = {} -- socket: coroutine list
+local readwait = {}
+local writewait = {}
+local connwait = {}
 local server_handlers = {}
 local regular = {}
 
-function add_regular(co)
-  table.insert(regular, co)
+function add_regular()
+  table.insert(regular, coroutine.running())
 end
 
-function remove_regular(co)
+function remove_regular()
+  local co = coroutine.running()
   for i, c in ipairs(regular) do
     if co == c then
       table.remove(regular, i)
@@ -21,71 +23,124 @@ function remove_regular(co)
   end
 end
 
-local function subscribe(read_or_write, sock, co)
-  connections_coroutines[sock] = co
+local function subscribe(read_or_write, sock)
+  local cos = connections_coroutines[sock]
+  if not cos then
+    cos = {}
+    connections_coroutines[sock] = cos
+  end
+  cos[coroutine.running()] = true
   table.insert(read_or_write, sock)
 end
 
 local function unsubscribe(read_or_write, sock)
-  connections_coroutines[sock] = nil
+  local cos = connections_coroutines[sock]
+  cos[coroutine.running()] = nil
+
   for i, connection in ipairs(read_or_write) do
     if sock == connection then
       table.remove(read_or_write, i)
       return
     end
   end
+  print('??', sock)
 end
 
 function connect(host, port)
   local sock = socket.tcp()
-  sock:settimeout(0)
-  subscribe(read, sock, coroutine.running()) -- one should be enough!!!
-  subscribe(write, sock, coroutine.running())
+  sock:settimeout(1)
+  subscribe(writewait, sock)
+  subscribe(readwait, sock)
 
   local res, err = sock:connect(host, port)
   if err == 'timeout' then
+    -- print('conn timeout, yield1', host, port, res, err)
     while not sock:getpeername() do
       -- print('conn timeout, yield', host, port, sock:getpeername())
-      if coroutine.running() then coroutine.yield() end
+      if coroutine.running() then
+        coroutine.yield()
+      else
+        print("???")
+      end
     end
+    print('connected', host, res, err)
   elseif err then
     print('async conn err:', err)
+    unsubscribe(writewait, sock)
+    unsubscribe(readwait, sock)
     return nil, err
   end
 
-  unsubscribe(read, sock) -- one should be enough!!!
-  unsubscribe(write, sock)
+  unsubscribe(writewait, sock)
+  unsubscribe(readwait, sock)
   return sock
 end
 
+function receive_subscribe(sock, callback, close_callback)
+  local co = coroutine.create(
+    function()
+      subscribe(readwait, sock)
+      sock:settimeout(0) -- WTF not set before ???
+
+      while true do
+        local data, err, lo = sock:receive(8192)
+        if err == 'timeout' then
+          if lo and #lo > 0 then callback(lo) end
+        elseif err == 'closed' then
+          unsubscribe(readwait, sock)
+          close_callback()
+          return
+        elseif err then
+          print('async receive cb err:', err, lo and #lo)
+          unsubscribe(readwait, sock)
+          close_callback()
+          return
+        else
+          callback(data)
+        end
+        coroutine.yield()
+      end
+    end
+  )
+  coroutine.resume(co)
+end
+
 function receive(sock, pattern)
-  subscribe(read, sock, coroutine.running())
+  subscribe(readwait, sock)
 
   local data, err, lo
   local parts = {}
   while not data do
-    -- print('receiving', sock)
+    sock:settimeout(0) -- WTF not set before ???
+    -- print('receiving from', sock)
     data, err, lo = sock:receive(pattern)
+    -- print('received from', sock, data and #data, err, lo and #lo)
     table.insert(parts, lo)
     if err == 'timeout' then
       -- print('receive timeout', data, err, lo and #lo)
       if coroutine.running() then coroutine.yield() end
       -- print('receive resumed')
-    elseif err then
-      -- print('async receive err:', err, lo and #lo)
+    elseif err == 'closed' then
+      print('closed on receive')
+      unsubscribe(readwait, sock)
+      return nil, err, table.concat(parts)
 
-      unsubscribe(read, sock)
+    elseif err then
+      print('async receive err:', err, lo and #lo)
+
+      unsubscribe(readwait, sock)
       return nil, err, table.concat(parts)
     end
   end
 
-  unsubscribe(read, sock)
+  -- print('received something', data and #data)
+  unsubscribe(readwait, sock)
   table.insert(parts, data)
   return table.concat(parts)
 end
 
 function send(sock, data_to_send)
-  subscribe(write, sock, coroutine.running())
+  subscribe(writewait, sock)
 
   local data, err
   while not data do
@@ -96,24 +151,26 @@ function send(sock, data_to_send)
       if coroutine.running() then coroutine.yield() end
       -- print('send resumed')
     elseif err then
-      -- print('async send err:', err)
+      print('async send err:', err)
 
-      unsubscribe(write, sock)
+      unsubscribe(writewait, sock)
       return nil, err
     end
   end
   -- print('sent', data)
 
-  unsubscribe(write, sock)
+  unsubscribe(writewait, sock)
   return data
 end
 
 local function cleanup(co)
+  -- print("!!!! cleanup", co)
   for sock, coroutine in pairs(connections_coroutines) do
     if co == coroutine then
-      connections_coroutines[sock] = nil
-      unsubscribe(read, sock)
-      unsubscribe(write, sock)
+      connections_coroutines[sock] = {}
+      unsubscribe(connwait, sock)
+      unsubscribe(readwait, sock)
+      unsubscribe(writewait, sock)
     end
   end
 end
@@ -121,7 +178,7 @@ end
 function add_server(server, handler)
   server:settimeout(0)
   server_handlers[server] = handler
-  table.insert(read, server)
+  table.insert(connwait, server)
 end
 
 local timeout = 1
@@ -130,25 +187,35 @@ function set_timeout(user_timeout)
 end
 
 function step()
-  local read_ready, write_ready, err = socket.select(read, write, timeout)
-  -- print('select', #read_ready..'/'..#read, #write_ready..'/'..#write, err)
+  local c_ready, conn_ready, err = socket.select(connwait, connwait, timeout)
+  -- print('select c', #c_ready..'/'..#connwait, #conn_ready..'/'..#connwait, err)
   
   local cos_to_wake_up = {}
-  for i, connection in ipairs(read_ready) do
-    if not connections_coroutines[connection] then
-      local handler = server_handlers[connection]
-      local client, err = connection:accept()
-      local co = coroutine.create(function() handler(client) end)
-      connection = client
-      connections_coroutines[connection] = co
+  for i, connection in ipairs(c_ready) do
+    local handler = server_handlers[connection]
+    local client, err = connection:accept()
+    local co = coroutine.create(function() handler(client) end)
+    local cos = connections_coroutines[client]
+    if not cos then
+      cos = {}
+      connections_coroutines[client] = cos
     end
-    cos_to_wake_up[connections_coroutines[connection]] = true
+    cos[co] = true
+    cos_to_wake_up[co] = true
+  end
+
+  local read_ready, write_ready, err = socket.select(readwait, writewait, timeout)
+  -- print('select', #read_ready..'/'..#readwait, #write_ready..'/'..#writewait, err)
+
+  for i, connection in ipairs(read_ready) do
+    local cos = connections_coroutines[connection]
+    for co, _ in pairs(cos) do
+      cos_to_wake_up[co] = true
+    end
   end
 
   for i, connection in ipairs(write_ready) do
-    if connections_coroutines[connection] then
-      cos_to_wake_up[connections_coroutines[connection]] = true
-    end
+    cos_to_wake_up[connections_coroutines[connection]] = true
   end
 
   for co in pairs(cos_to_wake_up) do
@@ -165,7 +232,7 @@ function step()
   for _, co in pairs(regular) do
     local result, err = coroutine.resume(co)
     if err then
-      print('co err ', co, result, err, coroutine.status(co))
+      print('regular co err ', co, result, err, coroutine.status(co))
     end
     if coroutine.status(co) == 'dead' then
       remove_regular(co)
@@ -184,4 +251,21 @@ end
 
 function shut_down()
   shutdown = true
+end
+
+function pipe(socket)
+  return {
+    receive = function(pattern)
+      return async.receive(socket, pattern)
+    end,
+    send = function(data)
+      return async.send(socket, data)
+    end,
+    receive_subscribe = function(callback, close_callback)
+      return async.receive_subscribe(socket, callback, close_callback)
+    end,
+    close = function()
+      socket:close()
+    end
+  }
 end

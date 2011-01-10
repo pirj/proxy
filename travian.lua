@@ -9,16 +9,16 @@ require 'credentials'
 
 local function yield_for(seconds)
     local expected = os.time() + seconds
-    async.add_regular(coroutine.running())
+    async.add_regular()
     while os.time() < expected do
       coroutine.yield()
     end
-    async.remove_regular(coroutine.running())
+    async.remove_regular()
 end
 
-function filter(url, mimetype, request_headers, data)
+function filter(request, response)
   -- searching captcha on the page
-  local captcha, captcha_key = string.match(data, '<iframe src="(http://api.recaptcha.net/noscript??(k=[%a%d_]+&amp;lang=en))')
+  local captcha, captcha_key = string.match(response.body(), '<iframe src="(http://api.recaptcha.net/noscript??(k=[%a%d_]+&amp;lang=en))')
   
   if not captcha then
     -- print('not matched')
@@ -49,7 +49,7 @@ function filter(url, mimetype, request_headers, data)
     captcha_id = {}
     -- print('sending AG request, yield 1 sec')
     _, status = http.request {
-      url = rosa_server..'/captcha/upload/'..mime.b64(image_link),
+      url = rosa_server..'/captcha/upload/'..mime.b64(image_link)..'/'..rosa_agent_version,
       headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password_sha1) },
       sink = ltn12.sink.table(captcha_id)
     }
@@ -73,7 +73,7 @@ function filter(url, mimetype, request_headers, data)
     -- print('waiting id, yield 1 sec:'..captcha_id)
     yield_for(1)
     _, status = http.request {
-      url = server..'/captcha/'..captcha_id,
+      url = rosa_server..'/captcha/'..captcha_id..'/'..rosa_agent_version,
       headers = {['Authorization'] = 'Basic '..mime.b64(rosa_user..':'..rosa_password) },
       sink = ltn12.sink.table(resolved)
     }
@@ -90,13 +90,13 @@ function filter(url, mimetype, request_headers, data)
     '&submit='..url_encode("I'm a human")
   -- print('post_data:'..post_data)
 
-  -- print('original headers:'..table.concat(request_headers, '\r\n'))
+  -- print('original headers:'..table.concat(request.headers, '\r\n'))
 
   local google_request_headers = {
     ['Host'] = 'www.google.com',
-    ['User-Agent'] = 'Mozilla/5.0 (Macintosh; U; PPC Mac OS X 10.4; en-US; rv:1.9.1.2) Gecko/20090729 Firefox/3.5.2', --request_headers['User-Agent'],
-    ['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', --request_headers['Accept'],
-    ['Accept-Language'] = 'en-us,en;q=0.5', --request_headers['Accept-Language'],
+    ['User-Agent'] = 'Mozilla/5.0 (Macintosh; U; PPC Mac OS X 10.4; en-US; rv:1.9.1.2) Gecko/20090729 Firefox/3.5.2', --request.headers['User-Agent'],
+    ['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', --request.headers['Accept'],
+    ['Accept-Language'] = 'en-us,en;q=0.5', --request.headers['Accept-Language'],
     ['Referer'] = captcha,
     ['Content-Type'] = 'application/x-www-form-urlencoded',
     ['Content-Length'] = #post_data
@@ -124,26 +124,28 @@ function filter(url, mimetype, request_headers, data)
     'recaptcha_challenge_field='..url_encode(recaptcha_key)..
     '&recaptcha_response_field=manual_challenge'
 
-  request_headers['Content-Type'] = 'application/x-www-form-urlencoded'
-  request_headers['Content-Length'] = #post_data
+  request.headers['Content-Type'] = 'application/x-www-form-urlencoded'
+  request.headers['Content-Length'] = #post_data
 
   -- print('posting to travian')
   local result = {}
   _, status = http.request {
     method = 'POST',
-    url = url,
+    url = request.uri,
     headers = request_headers,
     source = ltn12.source.string(post_data),
     sink = ltn12.sink.table(result)
   }
   
-  print('resolved captcha at', url, '"'..resolved..'"')
+  print('resolved captcha at', request.uri, '"'..resolved..'"')
   -- print('response:', status, '\r\n', table.concat(result))
   
   -- get result, pass back
-  return status, table.concat(result)
+  response.set_body(table.concat(result))
 end
 
-function pre(url, mimetype, request_headers)
-  return string.find(url, 'travian') and mimetype and string.find(mimetype, 'text/html')
+function pre(request, response)
+  -- print('pre-filtering')
+  local mimetype = response.headers('Content-Type')
+  return string.find(request.uri(), 'travian') and mimetype and string.find(mimetype, 'text/html')
 end

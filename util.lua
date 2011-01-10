@@ -23,7 +23,7 @@ function dechunk(chunkie)
   local chunks = {}
   chunkie, chunk_size = readline(chunkie)
 
-  while tonumber(chunk_size, 16) > 0 do
+  while chunk_size and tonumber(chunk_size, 16) > 0 do
     chunkie, chunk = readbytes(chunkie, tonumber(chunk_size, 16))
 
     table.insert(chunks, chunk)
@@ -36,16 +36,15 @@ function dechunk(chunkie)
   return table.concat(chunks)
 end
 
-table.collect = function(t, f)
-  r = {}
-  for k,v in pairs(t) do
-    if f(v) then
-      r[k] = v
-    end
-  end
-  return r
-end
-
 function url_encode(str)
   return string.gsub(str, "([^a-zA-Z0-9_\*\'\(\)\.\+\!$\-])", function(c) return string.format("%%%02X", string.byte(c)) end)
+end
+
+-- This unpack doesn't cut trailing nils
+-- {1, 2, 3, nil} => 1, 2, 3, nil instead of 1, 2, 3 for unpack()
+function unpack_with_nils(t, i)
+  i = i or 1
+  if i <= t.n then
+    return t[i], unpack_with_nils(t, i + 1)
+  end
 end
